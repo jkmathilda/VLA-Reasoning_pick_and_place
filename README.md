@@ -17,7 +17,7 @@ Teleoperation and dataset recording scripts for the SO101 robot arm using [LeRob
 python3 -m venv .venv
 source .venv/bin/activate
 ```
-```
+```bash
 # Windows
 python3 -m venv .venv
 .venv\Scripts\activate
@@ -38,7 +38,7 @@ Before running, update the USB port paths at the top of each script to match you
 # macOS
 ls /dev/tty.usbmodem*
 ```
-```
+```bash
 # Linux
 ls /dev/ttyUSB* /dev/ttyACM*
 ```
