@@ -24,6 +24,16 @@ source .venv/bin/activate      # macOS / Linux
 pip install -r requirements.txt
 ```
 
+## Environment Variables
+
+Create a `.env` file in the project root (it is already gitignored):
+
+```
+HF_TOKEN=hf_xxx
+```
+
+Get your token from [huggingface.co/settings/tokens](https://huggingface.co/settings/tokens). This is required by `vlm.py` to authenticate with the Hugging Face Hub and avoid rate limiting when downloading models.
+
 ## Configuration
 
 Before running, update the USB port paths at the top of each script to match your system.
