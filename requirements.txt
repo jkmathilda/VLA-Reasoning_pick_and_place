@@ -4,3 +4,10 @@ lerobot
 transformers
 torch
 python-dotenv
+num2words
+Pillow
+av
+datasets
+huggingface_hub
+numpy
+pandas
