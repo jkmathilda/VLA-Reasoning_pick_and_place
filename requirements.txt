@@ -1,0 +1,3 @@
+opencv-python
+rerun-sdk
+lerobot
