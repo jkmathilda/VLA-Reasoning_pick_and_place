@@ -1,19 +1,17 @@
 from datasets import load_dataset
 from huggingface_hub import hf_hub_download
 import pandas as pd
-import numpy as np
-import re
 import os
 import glob
 
 import torch
 import torch.nn as nn
-from torch.utils.data import Dataset, DataLoader, random_split
+from torch.utils.data import Dataset, DataLoader
 import torchvision.transforms as T
 from PIL import Image
 import av
 
-from policy import ActionPolicy, POSITION_TO_ID
+from policy import VLAPolicy, TASK_INDEX_TO_STRING
 
 
 # ─── Constants ────────────────────────────────────────────────────────────────
@@ -23,43 +21,10 @@ IMAGE_SIZE  = 256
 FPS         = 30
 
 
-# ─── Task index → bowl color ──────────────────────────────────────────────────
-
-def build_task_index_to_bowl(repo_id: str = DATASET_ID) -> dict:
-    """
-    Loads meta/tasks.parquet and extracts bowl color from each task string via regex.
-    Corrupted entries (arrow-key artifacts, typos) still contain a color word.
-    Pure garbage (e.g. "[D11") returns None — those episodes are dropped later.
-    """
-    path = hf_hub_download(repo_id=repo_id, filename="meta/tasks.parquet", repo_type="dataset")
-    tasks_df = pd.read_parquet(path)
-    mapping = {}
-    for task_str, row in tasks_df.iterrows():
-        match = re.search(r"\b(green|blue|red)\b", task_str, re.IGNORECASE)
-        mapping[int(row["task_index"])] = match.group(1).lower() if match else None
-    return mapping
-
-
-TASK_INDEX_TO_BOWL = build_task_index_to_bowl()
-
-# Eval 1 fixed bowl order: blue=left, red=middle, green=right.
-# Policy is conditioned on position so Eval 1 and Eval 2 share the same trained model.
-# NOTE: verify your teleop episodes match this physical order before training.
-BOWL_TO_POSITION = {
-    "blue":  "left",
-    "red":   "middle",
-    "green": "right",
-}
-
-
 # ─── Episode → video file mapping ─────────────────────────────────────────────
 
 def load_episode_video_map(repo_id: str = DATASET_ID) -> dict:
-    """
-    Returns {episode_index: {chunk_index, file_index, from_timestamp}} by reading
-    all meta/episodes parquet files. Used to locate which video file contains each
-    episode and at what timestamp it starts within that file.
-    """
+    """Returns {episode_index: {chunk_index, file_index, from_timestamp}}."""
     seed_path = hf_hub_download(
         repo_id=repo_id,
         filename="meta/episodes/chunk-000/file-000.parquet",
@@ -91,12 +56,12 @@ def get_video_path(chunk_index: int, file_index: int, repo_id: str = DATASET_ID)
 
 class VLAPolicyDataset(Dataset):
     """
-    Yields (image, state, position_id, action) tuples from the teleop dataset.
+    Yields (image, state, task_string, action) tuples.
 
-    - image:       Float tensor [3, 256, 256] in [0, 1]
-    - state:       Float tensor [6]  — current joint positions
-    - position_id: Long tensor scalar — 0=left, 1=middle, 2=right
-    - action:      Float tensor [6]  — target joint positions
+    - image:       PIL Image (256×256) — VLAPolicy.encode_inputs handles normalisation
+    - state:       Float tensor [6]
+    - task_string: str — canonical task instruction
+    - action:      Float tensor [6]
     """
 
     def __init__(self, df: pd.DataFrame, episode_video_map: dict, augment: bool = False):
@@ -104,10 +69,7 @@ class VLAPolicyDataset(Dataset):
         self.episode_video_map = episode_video_map
         self._video_path_cache: dict = {}
 
-        self.resize = T.Compose([
-            T.Resize((IMAGE_SIZE, IMAGE_SIZE)),
-            T.ToTensor(),
-        ])
+        self.resize  = T.Resize((IMAGE_SIZE, IMAGE_SIZE))
         self.augment = T.ColorJitter(brightness=0.3, contrast=0.3, saturation=0.2) if augment else None
 
     def _video_path(self, chunk_index: int, file_index: int) -> str:
@@ -117,13 +79,12 @@ class VLAPolicyDataset(Dataset):
         return self._video_path_cache[key]
 
     def _load_frame(self, episode_index: int, within_episode_ts: float) -> Image.Image:
-        meta = self.episode_video_map[episode_index]
-        video_ts = meta["from_timestamp"] + within_episode_ts  # absolute position in mp4
+        meta      = self.episode_video_map[episode_index]
+        video_ts  = meta["from_timestamp"] + within_episode_ts
         video_path = self._video_path(meta["chunk_index"], meta["file_index"])
 
         with av.open(video_path) as container:
-            stream = container.streams.video[0]
-            # Seek backward to nearest keyframe, then decode forward to target
+            stream     = container.streams.video[0]
             target_pts = int(video_ts / float(stream.time_base))
             container.seek(target_pts, stream=stream, backward=True, any_frame=False)
             for frame in container.decode(stream):
@@ -139,15 +100,21 @@ class VLAPolicyDataset(Dataset):
         row = self.df.iloc[idx]
 
         image = self._load_frame(int(row["episode_index"]), float(row["timestamp"]))
+        image = self.resize(image)
         if self.augment:
             image = self.augment(image)
-        image = self.resize(image)  # [3, 256, 256]
 
         state       = torch.tensor(list(row["observation.state"]), dtype=torch.float32)
-        position_id = torch.tensor(POSITION_TO_ID[row["position"]], dtype=torch.long)
+        task_string = row["task_string"]
         action      = torch.tensor(list(row["action"]), dtype=torch.float32)
 
-        return image, state, position_id, action
+        return image, state, task_string, action
+
+
+def collate_fn(batch):
+    """Keep PIL images and task strings as lists; stack tensors."""
+    images, states, task_strings, actions = zip(*batch)
+    return list(images), list(task_strings), torch.stack(states), torch.stack(actions)
 
 
 # ─── Training loop ────────────────────────────────────────────────────────────
@@ -168,28 +135,35 @@ def train(
     ds = load_dataset(DATASET_ID, data_files={"train": "data/chunk-*/file-*.parquet"})
     df = pd.DataFrame(ds["train"])
 
-    df["bowl"]     = df["task_index"].map(TASK_INDEX_TO_BOWL)
-    df["position"] = df["bowl"].map(BOWL_TO_POSITION)
-    df = df[df["bowl"].notna()].reset_index(drop=True)
+    df["task_string"] = df["task_index"].map(TASK_INDEX_TO_STRING)
+    df = df[df["task_string"].notna()].reset_index(drop=True)
 
     print(f"Frames after cleaning: {len(df)}")
-    print(df["position"].value_counts())
+    print(df["task_string"].value_counts())
 
     episode_video_map = load_episode_video_map()
 
-    full_ds = VLAPolicyDataset(df, episode_video_map, augment=True)
-    val_size   = int(len(full_ds) * val_split)
-    train_size = len(full_ds) - val_size
-    train_ds, val_ds = random_split(full_ds, [train_size, val_size])
-    val_ds.dataset.augment = None  # no augmentation on val
+    # Split indices to create separate dataset instances (avoids shared augment state)
+    total      = len(df)
+    val_size   = int(total * val_split)
+    train_size = total - val_size
+    perm       = torch.randperm(total).tolist()
+
+    train_df = df.iloc[perm[:train_size]].reset_index(drop=True)
+    val_df   = df.iloc[perm[train_size:]].reset_index(drop=True)
+
+    train_ds = VLAPolicyDataset(train_df, episode_video_map, augment=True)
+    val_ds   = VLAPolicyDataset(val_df,   episode_video_map, augment=False)
 
     train_loader = DataLoader(train_ds, batch_size=batch_size, shuffle=True,
-                              num_workers=num_workers, pin_memory=True)
+                              num_workers=num_workers, pin_memory=True,
+                              collate_fn=collate_fn)
     val_loader   = DataLoader(val_ds,   batch_size=batch_size, shuffle=False,
-                              num_workers=num_workers, pin_memory=True)
+                              num_workers=num_workers, pin_memory=True,
+                              collate_fn=collate_fn)
 
     # --- Model ---
-    model = ActionPolicy(hidden_dim=256, freeze_encoder=True).to(device)
+    model     = VLAPolicy(hidden_dim=256, freeze_backbone=True).to(device)
     optimizer = torch.optim.AdamW(
         filter(lambda p: p.requires_grad, model.parameters()), lr=lr
     )
@@ -198,16 +172,15 @@ def train(
     best_val_loss = float("inf")
 
     for epoch in range(1, epochs + 1):
-        # Train
         model.train()
         train_loss = 0.0
-        for images, states, position_ids, actions in train_loader:
-            images, states      = images.to(device), states.to(device)
-            position_ids        = position_ids.to(device)
-            actions             = actions.to(device)
+        for pil_images, task_strings, states, actions in train_loader:
+            states  = states.to(device)
+            actions = actions.to(device)
 
-            preds = model(images, states, position_ids)
-            loss  = criterion(preds, actions)
+            inputs = model.encode_inputs(pil_images, task_strings, device)
+            preds  = model(inputs.pixel_values, inputs.input_ids, inputs.attention_mask, states)
+            loss   = criterion(preds, actions)
 
             optimizer.zero_grad()
             loss.backward()
@@ -216,15 +189,14 @@ def train(
 
         train_loss /= len(train_loader)
 
-        # Validate
         model.eval()
         val_loss = 0.0
         with torch.no_grad():
-            for images, states, position_ids, actions in val_loader:
-                images, states  = images.to(device), states.to(device)
-                position_ids    = position_ids.to(device)
-                actions         = actions.to(device)
-                preds = model(images, states, position_ids)
+            for pil_images, task_strings, states, actions in val_loader:
+                states  = states.to(device)
+                actions = actions.to(device)
+                inputs  = model.encode_inputs(pil_images, task_strings, device)
+                preds   = model(inputs.pixel_values, inputs.input_ids, inputs.attention_mask, states)
                 val_loss += criterion(preds, actions).item()
         val_loss /= len(val_loader)
 
