@@ -7,29 +7,29 @@
 ## 1. System Overview
 
 ```
-┌─────────────────────────────────────────────────────────────┐
-│                        main.py (CLI)                        │
-│  $ python main.py --task "Put the banana in the blue bowl." │
-└────────────────────────┬────────────────────────────────────┘
-                         │
-              ┌──────────▼──────────┐
-              │    VLMRouter        │  src/vlm_router.py
-              │  task + frame in    │
-              │  position out       │
-              │  {left|middle|right}│
-              └──────────┬──────────┘
-                         │
-              ┌──────────▼──────────┐
-              │   ActionPolicy      │  src/policy.py
-              │  (state, image,     │
-              │   position) → actions│
-              └──────────┬──────────┘
-                         │
-              ┌──────────▼──────────┐
-              │   SO101 Robot       │  via LeRobot
-              │   6-DOF commands    │
-              └─────────────────────┘
+┌──────────────────────────────────────────────────────────────┐
+│                        main.py (CLI)                         │
+│  $ python main.py --task "Put the banana in the blue bowl."  │
+└─────────────────────────┬────────────────────────────────────┘
+                          │  task string + camera frame
+              ┌───────────▼───────────┐
+              │      VLAPolicy        │  src/policy.py
+              │                       │
+              │  vision encoder       │  ← pretrained (SmolVLM2)
+              │  language model       │  ← pretrained (SmolVLM2)
+              │  action head          │  ← fine-tuned on teleop data
+              │                       │
+              │  (frame, task, state) │
+              │        → action [6]   │
+              └───────────┬───────────┘
+                          │
+              ┌───────────▼───────────┐
+              │     SO101 Robot       │  via LeRobot
+              │     6-DOF commands    │
+              └───────────────────────┘
 ```
+
+No separate VLM router. Language reasoning and visual grounding happen inside the VLA backbone.
 
 ---
 
@@ -39,18 +39,20 @@
 VLA-Reasoning_pick_and_place/
 ├── main.py                   # CLI entry point
 ├── src/
-│   ├── vlm_router.py         # VLM inference + position resolution (NEW)
-│   ├── policy.py             # BC action policy model + inference (NEW)
-│   ├── train.py              # Dataset loading + policy training
-│   ├── vlm2.py               # SmolVLM2 video inference (existing)
+│   ├── policy.py             # VLA model + training + inference loop
+│   ├── train.py              # Dataset loading + training script
 │   ├── record.py             # Teleop data recording (existing)
 │   └── teleop.py             # Teleoperation (existing)
+├── checkpoints/
+│   └── policy.pt             # Trained VLA weights
 ├── docs/
 │   ├── P1-VLA.pdf
 │   ├── 01-plan/features/vla-pipeline.plan.md
 │   └── 02-design/features/vla-pipeline.design.md
 └── requirements.txt
 ```
+
+**Removed:** `src/vlm_router.py`, `src/vlm.py`, `src/vlm2.py` (no longer needed at inference)
 
 ---
 
@@ -64,25 +66,15 @@ VLA-Reasoning_pick_and_place/
 #   python main.py --task "Put the banana into the 2nd bowl from the left."
 
 import argparse
-from src.vlm_router import VLMRouter
-from src.policy import ActionPolicy
+from src.policy import VLAPolicy
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--task", type=str, required=True)
 args = parser.parse_args()
 
-router = VLMRouter()
-policy = ActionPolicy.load("checkpoints/policy.pt")
-
-# 1. Capture frame from robot camera
-frame = capture_frame()  # via LeRobot camera API
-
-# 2. VLM resolves instruction → position
-position = router.resolve(task=args.task, frame=frame)
-# position ∈ {"left", "middle", "right"}
-
-# 3. Policy executes pick-and-place to target position
-policy.run(position=position)  # sends actions to robot, 20s timeout
+policy = VLAPolicy.load("checkpoints/policy.pt")
+policy.run(task=args.task, timeout=18.0)
+# captures frames, sends joint commands to robot until timeout
 ```
 
 **Constraints:**
@@ -91,204 +83,185 @@ policy.run(position=position)  # sends actions to robot, 20s timeout
 
 ---
 
-### 3.2 `src/vlm_router.py` — VLM Position Resolver
+### 3.2 `src/policy.py` — VLA Model
 
-**Responsibility:** given a task string + camera frame, return `position ∈ {left, middle, right}`.
+**Single model: language + vision → action.**
+
+**Architecture (SmolVLM2 backbone + action head):**
+
+```
+camera frame [3, 256, 256]
+        │
+   Vision encoder (SmolVLM2, pretrained, frozen or lightly fine-tuned)
+        │  [visual tokens]
+        │
+task instruction tokens (SmolVLM2 tokenizer + LM, pretrained)
+        │  [text tokens]
+        │
+   ┌────┴─────────────────┐
+   │  Cross-attention /   │
+   │  token concatenation │
+   └────────┬─────────────┘
+            │
+   state [6] ──── concat
+            │
+      Action head MLP
+      (hidden_dim → 256 → 6)
+            │
+      action [6-DOF]
+```
+
+**Class interface:**
 
 ```python
-class VLMRouter:
-    def __init__(self, model_id="HuggingFaceTB/SmolVLM2-500M-Video-Instruct"):
-        # load processor + model (reuse src/vlm2.py pattern)
+class VLAPolicy(nn.Module):
+    def __init__(self, model_id="HuggingFaceTB/SmolVLM2-500M-Video-Instruct",
+                 hidden_dim=256, freeze_backbone=True):
+        # loads SmolVLM2 processor + model
+        # adds action head on top
 
-    def resolve(self, task: str, frame: PIL.Image) -> str:
-        # Returns "left", "middle", or "right"
-```
+    def forward(self, image, task_tokens, state) -> Tensor:
+        # returns predicted action [B, 6]
 
-**Eval 1 prompt** (fixed layout, color extraction only):
-```
-System: The bowl layout is fixed: blue=left, red=middle, green=right.
-User:   Instruction: "{task}"
-        Which position is the target bowl?
-        Answer with exactly one word: left, middle, or right.
-```
+    def run(self, task: str, timeout: float = 18.0):
+        # inference loop:
+        #   while not done and elapsed < timeout:
+        #     frame = robot.camera.capture()
+        #     state = robot.get_joints()
+        #     action = self(frame, task, state)
+        #     robot.set_joints(action)
 
-**Eval 2 prompt** (varying layout, visual grounding required):
-```
-System: You are a robot assistant. Look at the camera image carefully.
-User:   [image attached]
-        There are three bowls in front of the robot (left, middle, right).
-        First identify the color of each bowl by position.
-        Then, given the instruction: "{task}"
-        Which position is the target bowl?
-        Answer with exactly one word: left, middle, or right.
-```
+    def save(self, path: str): ...
 
-**Output parsing:**
-```python
-response = generate(prompt)
-for word in ["left", "middle", "right"]:
-    if word in response.lower():
-        return word
-raise ValueError(f"VLM returned unrecognised position: {response}")
-```
-
-**Eval routing logic:**
-- If task contains a color word (`blue|red|green`) AND no spatial qualifier
-  (`left|right|middle|2nd|first|second|third|not`) → use Eval 1 prompt (faster, no image needed)
-- Otherwise → use Eval 2 prompt with camera frame
-
----
-
-### 3.3 `src/policy.py` — Behavior Cloning Action Policy
-
-**Input:** `(image: Tensor[3,256,256], state: Tensor[6], position_id: int)` → `action: Tensor[6]`
-
-**Architecture:**
-
-```
-image (256×256×3)
-    │
-    ▼
-Image Encoder (frozen SmolVLM2 vision encoder OR lightweight CNN)
-    │  [512-dim embedding]
-    │
-state (6-DOF)  ──────┐
-position_id (0/1/2) ──┤  concat
-                      ▼
-              MLP (512+6+3 → 256 → 256 → 6)
-                      │
-                      ▼
-              predicted action (6-DOF)
-```
-
-**Position encoding:** one-hot or learned embedding for `{left=0, middle=1, right=2}`.
-
-**Training objective:** MSE loss on 6-DOF joint actions.
-
-```python
-class ActionPolicy(nn.Module):
-    def __init__(self, image_encoder, hidden_dim=256):
-        ...
-    def forward(self, image, state, position_id) -> Tensor:
-        ...
-    def run(self, position: str, timeout: float = 18.0):
-        # inference loop: capture frame → predict action → send to robot
-        ...
     @classmethod
-    def load(cls, path: str) -> "ActionPolicy":
-        ...
+    def load(cls, path: str) -> "VLAPolicy": ...
 ```
+
+**Starting point:** SmolVLA or Smol-0-VLA repo — fork their training loop and swap in this backbone.
 
 ---
 
-### 3.4 `src/train.py` — Training Loop
+### 3.3 `src/train.py` — Training Loop
 
 **Data pipeline:**
 
 ```
 HF dataset "ehalicki/eth-rl-so101-may4"
     │
-    ├─ data/chunk-*/file-*.parquet  →  action, state, task_index, frame_index
-    └─ video files (wrist_camera)   →  frames per episode
+    ├─ data/chunk-*/file-*.parquet  →  action, state, task_index, timestamp
+    └─ video files (wrist_camera)   →  frames per episode (256×256)
          │
          ▼
-    build_task_index_to_bowl()  →  task_index → bowl color
-    BOWL_TO_POSITION            →  bowl color → position {left/middle/right}
+    build_task_index_to_bowl()   →  task_index → bowl color (for data cleaning)
+    build_task_index_to_string() →  task_index → canonical task string
          │
          ▼
     VLAPolicyDataset
       __getitem__(idx):
-        - load frame from video at frame_index  (resize to 256×256)
-        - return (image, state, position_id, action)
+        - load frame from video at timestamp  (resize to 256×256, augment)
+        - return (image, state, task_string, action)
+```
+
+**Training sample:**
+```python
+image:       Tensor [3, 256, 256]   # camera frame
+state:       Tensor [6]             # current joint positions
+task_string: str                    # "Put the banana in the blue bowl."
+action:      Tensor [6]             # target joint positions
 ```
 
 **Training config:**
+
 | Param | Value |
 |-------|-------|
 | Image size | 256 × 256 |
 | Batch size | 64 (gradient accumulation if needed) |
 | Optimizer | AdamW, lr=1e-4 |
 | Loss | MSE on 6-DOF actions |
-| Epochs | until validation loss converges |
-| Augmentations | random brightness/contrast, ±5cm position jitter |
-
-**Dataset class:**
-```python
-class VLAPolicyDataset(Dataset):
-    def __init__(self, df: pd.DataFrame, video_root: str):
-        # df has columns: action, observation.state, position, episode_index, frame_index
-    def __getitem__(self, idx):
-        row = self.df.iloc[idx]
-        image = self._load_frame(row["episode_index"], row["frame_index"])
-        image = transforms.Resize((256, 256))(image)
-        state = torch.tensor(row["observation.state"], dtype=torch.float32)
-        position_id = POSITION_TO_ID[row["position"]]
-        action = torch.tensor(row["action"], dtype=torch.float32)
-        return image, state, position_id, action
-```
+| Backbone | Frozen during initial training; unfreeze last layers later |
+| Augmentations | ColorJitter (brightness/contrast/saturation), random flip |
 
 ---
 
-## 4. Data Flow Diagram
+### 3.4 Task String Mapping
 
-```
-Eval 1 inference:
-  "Put the banana in the blue bowl."
-        │
-        ▼ VLMRouter (Eval 1 prompt, no image)
-        "left"
-        │
-        ▼ ActionPolicy(image, state, position_id=0)
-        [j1, j2, j3, j4, j5, j6]  →  robot
-
-Eval 2 inference:
-  "Put the banana into the 2nd bowl from the left." + camera frame
-        │
-        ▼ VLMRouter (Eval 2 prompt, image attached)
-        SmolVLM2 sees: blue=right, red=left, green=middle
-        Resolves "2nd from left" → "red" → "left"
-        "left"
-        │
-        ▼ ActionPolicy(image, state, position_id=0)
-        [j1, j2, j3, j4, j5, j6]  →  robot
-```
-
----
-
-## 5. Position ID Mapping
+The teleop dataset has corrupted task_index entries. We clean them to canonical strings:
 
 ```python
-POSITION_TO_ID = {"left": 0, "middle": 1, "right": 2}
-ID_TO_POSITION = {0: "left", 1: "middle", 2: "right"}
+# task_index → canonical task string (for language conditioning)
+TASK_INDEX_TO_STRING = {
+    0: "Put the banana in the green bowl.",
+    1: "Put the banana in the blue bowl.",
+    2: "Put the banana in the red bowl.",
+    3: "Put the banana in the red bowl.",    # corrupted typo → same intent
+    4: "Put the banana in the blue bowl.",   # corrupted [D → same intent
+    5: "Put the banana in the green bowl.",  # corrupted [D → same intent
+    6: None,                                  # pure garbage → dropped
+    7: "Put the banana in the blue bowl.",   # corrupted [C → same intent
+    8: "Put the banana in the green bowl.",  # alternate spelling → same intent
+}
 ```
+
+This replaces the `BOWL_TO_POSITION` mapping from the two-model design — no `position_id` needed.
 
 ---
 
-## 6. Key Design Decisions
+## 4. Data Flow Diagrams
+
+**Training:**
+```
+(frame, "Put the banana in the blue bowl.", state) → VLAPolicy → MSE loss vs action
+```
+
+**Eval 1 inference:**
+```
+"Put the banana in the blue bowl." + frame
+        ↓
+   VLAPolicy (language understood via LM backbone)
+        ↓
+   [j1, j2, j3, j4, j5, j6]  →  robot
+```
+
+**Eval 2 inference:**
+```
+"Put the banana into the 2nd bowl from the left." + frame
+        ↓
+   VLAPolicy (VLM backbone sees scene + reasons compositionally)
+        ↓
+   [j1, j2, j3, j4, j5, j6]  →  robot
+```
+
+No intermediate step. The model resolves language and vision together.
+
+---
+
+## 5. Key Design Decisions
 
 | Decision | Choice | Reason |
 |----------|--------|--------|
-| Policy conditioning | position (left/middle/right) not color | Reuses same policy for Eval 1 & 2 |
-| Image encoder | Frozen SmolVLM2 vision encoder or lightweight CNN | Compute budget; avoids full VLM at every step |
-| VLM routing | Eval 1 prompt (fast) vs Eval 2 prompt (visual) | Avoid unnecessary image processing for simple color tasks |
-| Image resolution | 256×256 | TA recommendation; sufficient for bowl discrimination |
-| Loss function | MSE on raw actions | Simple BC baseline; can switch to chunked actions (ACT) later |
-| Video frame loading | PyAV (`av`) | Already installed, no torchcodec dependency |
+| Single model | VLA (no separate VLM router) | TA feedback; simpler; bonus for smallest model |
+| Backbone | SmolVLM2-500M (vision + language) | Pretrained, small, already working in codebase |
+| Action head | MLP on top of backbone output | Simple, fast to train |
+| Language input | Raw task string (not position_id) | Works for all evals including compositional |
+| Backbone training | Frozen initially, unfreeze later | Compute budget; avoid catastrophic forgetting |
+| Image resolution | 256×256 | TA recommendation |
+| Loss | MSE on raw actions | Simple BC baseline |
+| Frame loading | PyAV (`av`) | No torchcodec dependency |
 
 ---
 
-## 7. Open Questions Before Implementation
+## 6. Open Questions
 
-- [ ] Are video files for `wrist_camera` available locally or need separate download?
-- [ ] Does the teleop dataset bowl order (blue=left, red=middle, green=right) match the Eval 1 fixed order?
-- [ ] Is SmolVLM2-500M reliable enough for Eval 2 visual grounding, or do we need a larger model?
-- [ ] Use SmolVLM2 vision encoder as image encoder in policy, or train a separate CNN?
+- [ ] Use SmolVLA repo directly (fork + adapt) or implement action head from scratch on SmolVLM2?
+- [ ] Does teleop bowl order (blue=left, red=middle, green=right) match Eval 1 fixed order?
+- [ ] Freeze full backbone or only freeze vision encoder during training?
+- [ ] Camera setup: wrist camera (capture start frame) or shoulder mount?
 
 ---
 
-## 8. Implementation Order
+## 7. Implementation Order
 
-1. `src/train.py` — add `VLAPolicyDataset`, video frame loading, training loop
-2. `src/policy.py` — define `ActionPolicy`, train, overfit test on 1 episode
-3. `src/vlm_router.py` — `VLMRouter` with both prompt strategies + output parser
-4. `main.py` — wire CLI → `VLMRouter` → `ActionPolicy` → robot commands
+1. `src/train.py` — update `VLAPolicyDataset` to yield `task_string` instead of `position_id`
+2. `src/policy.py` — replace ResNet-18 + MLP with `VLAPolicy` (SmolVLM2 + action head)
+3. `main.py` — wire CLI → `VLAPolicy.run(task, timeout)`
+4. Overfit test on single episode, then full training
