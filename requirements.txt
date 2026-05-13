@@ -3,6 +3,7 @@ rerun-sdk
 lerobot
 transformers
 torch
+torchvision
 python-dotenv
 num2words
 Pillow
