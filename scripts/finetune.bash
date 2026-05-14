@@ -15,7 +15,6 @@ uv run --python 3.14 accelerate launch --mixed_precision=bf16 $PROJECT_ROOT/scri
   --dataset.repo_id=ehalicki/eth-rl-so101-may4 \
   --output_dir=$PROJECT_ROOT/outputs/$RUN_NAME \
   --job_name=$RUN_NAME \
-  --policy.type=smolvla \
   --policy.device=cuda \
   --policy.path=lerobot/smolvla_base \
   --rename_map='{"observation.images.wrist_camera": "observation.images.camera1"}' \
@@ -26,6 +25,7 @@ uv run --python 3.14 accelerate launch --mixed_precision=bf16 $PROJECT_ROOT/scri
   --steps=50000 \
   --batch_size=32
 # To resume from a checkpoint, replace --policy.path with:
+#   --policy.type=smolvla \
 #   --config_path=$PROJECT_ROOT/outputs/$RUN_NAME/checkpoints/last/pretrained_model/train_config.json
 #   --resume=true
 #
