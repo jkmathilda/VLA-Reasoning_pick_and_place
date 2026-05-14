@@ -1,6 +1,7 @@
 opencv-python
 rerun-sdk
-lerobot
+lerobot[smolvla]==0.5.1
+tqdm==4.67.3
 transformers
 torch
 torchvision

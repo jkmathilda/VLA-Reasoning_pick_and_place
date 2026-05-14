@@ -3,7 +3,7 @@
 RUN_NAME=smolvla_finetune_so101_may4
 
 PROJECT_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-VENV=$PROJECT_ROOT/.venv
+#VENV=$PROJECT_ROOT/.venv
 
 if [ -d "$VENV" ]; then
     source $VENV/bin/activate
@@ -16,6 +16,7 @@ accelerate launch --mixed_precision=bf16 $PROJECT_ROOT/scripts/train_lerobot.py 
   --policy.type=smolvla \
   --policy.device=cuda \
   --policy.path=lerobot/smolvla_base \
+  --rename_map='{"observation.images.wrist_camera": "observation.images.camera1"}' \
   --tolerance_s=0.04 \
   --num_workers=4 \
   --log_freq=100 \
@@ -27,4 +28,4 @@ accelerate launch --mixed_precision=bf16 $PROJECT_ROOT/scripts/train_lerobot.py 
 #   --resume=true
 #
 # If the camera key needs remapping (e.g. to match a pretrained model's expected key):
-#   --rename_map='{"observation.images.wrist_camera": "observation.images.top"}'
+#   
