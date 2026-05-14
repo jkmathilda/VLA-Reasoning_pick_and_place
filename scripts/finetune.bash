@@ -1,0 +1,30 @@
+#!/bin/bash
+
+RUN_NAME=smolvla_finetune_so101_may4
+
+PROJECT_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+VENV=$PROJECT_ROOT/.venv
+
+if [ -d "$VENV" ]; then
+    source $VENV/bin/activate
+fi
+
+accelerate launch --mixed_precision=bf16 $PROJECT_ROOT/scripts/train_lerobot.py \
+  --dataset.repo_id=ehalicki/eth-rl-so101-may4 \
+  --output_dir=$PROJECT_ROOT/outputs/$RUN_NAME \
+  --job_name=$RUN_NAME \
+  --policy.type=smolvla \
+  --policy.device=cuda \
+  --policy.path=lerobot/smolvla_base \
+  --tolerance_s=0.04 \
+  --num_workers=4 \
+  --log_freq=100 \
+  --save_freq=5000 \
+  --steps=50000 \
+  --batch_size=32
+# To resume from a checkpoint, replace --policy.path with:
+#   --config_path=$PROJECT_ROOT/outputs/$RUN_NAME/checkpoints/last/pretrained_model/train_config.json
+#   --resume=true
+#
+# If the camera key needs remapping (e.g. to match a pretrained model's expected key):
+#   --rename_map='{"observation.images.wrist_camera": "observation.images.top"}'
