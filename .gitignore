@@ -221,3 +221,4 @@ __marimo__/
 docs/.bkit-memory.json
 docs/.pdca-status.json
 .bkit/
+.bkit-memory.json
