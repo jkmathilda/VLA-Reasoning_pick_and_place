@@ -23,7 +23,8 @@ uv run --python 3.12 accelerate launch --mixed_precision=bf16 $PROJECT_ROOT/scri
   --log_freq=100 \
   --save_freq=5000 \
   --steps=50000 \
-  --batch_size=32
+  --batch_size=32 
+  --policy.repo_id=ehalicki/eth-rl-so101-may4-policy
 # To resume from a checkpoint, replace --policy.path with:
 #   --policy.type=smolvla \
 #   --config_path=$PROJECT_ROOT/outputs/$RUN_NAME/checkpoints/last/pretrained_model/train_config.json
