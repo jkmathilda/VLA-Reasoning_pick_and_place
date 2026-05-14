@@ -6,12 +6,12 @@ PROJECT_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 VENV=$PROJECT_ROOT/.venv
 
 if [ ! -d "$VENV" ]; then
-    uv venv --python 3.14 $VENV
+    uv venv --python 3.12 $VENV
 fi
 source $VENV/bin/activate
 uv pip install -r $PROJECT_ROOT/requirements.txt
 
-uv run --python 3.14 accelerate launch --mixed_precision=bf16 $PROJECT_ROOT/scripts/train_lerobot.py \
+uv run --python 3.12 accelerate launch --mixed_precision=bf16 $PROJECT_ROOT/scripts/train_lerobot.py \
   --dataset.repo_id=ehalicki/eth-rl-so101-may4 \
   --output_dir=$PROJECT_ROOT/outputs/$RUN_NAME \
   --job_name=$RUN_NAME \
@@ -28,6 +28,4 @@ uv run --python 3.14 accelerate launch --mixed_precision=bf16 $PROJECT_ROOT/scri
 #   --policy.type=smolvla \
 #   --config_path=$PROJECT_ROOT/outputs/$RUN_NAME/checkpoints/last/pretrained_model/train_config.json
 #   --resume=true
-#
-# If the camera key needs remapping (e.g. to match a pretrained model's expected key):
-#   
+
