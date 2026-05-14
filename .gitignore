@@ -218,4 +218,6 @@ __marimo__/
 .streamlit/secrets.toml
 
 # Local history
-.bkit-memory.json
+docs/.bkit-memory.json
+docs/.pdca-status.json
+.bkit/
