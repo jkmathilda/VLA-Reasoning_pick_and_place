@@ -3,13 +3,15 @@
 RUN_NAME=smolvla_finetune_so101_may4
 
 PROJECT_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-#VENV=$PROJECT_ROOT/.venv
+VENV=$PROJECT_ROOT/.venv
 
-if [ -d "$VENV" ]; then
-    source $VENV/bin/activate
+if [ ! -d "$VENV" ]; then
+    uv venv --python 3.14 $VENV
 fi
+source $VENV/bin/activate
+uv pip install -r $PROJECT_ROOT/requirements.txt
 
-accelerate launch --mixed_precision=bf16 $PROJECT_ROOT/scripts/train_lerobot.py \
+uv run --python 3.14 accelerate launch --mixed_precision=bf16 $PROJECT_ROOT/scripts/train_lerobot.py \
   --dataset.repo_id=ehalicki/eth-rl-so101-may4 \
   --output_dir=$PROJECT_ROOT/outputs/$RUN_NAME \
   --job_name=$RUN_NAME \
