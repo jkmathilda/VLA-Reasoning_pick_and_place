@@ -5,6 +5,17 @@ RUN_NAME=smolvla_finetune_so101_may4
 PROJECT_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 VENV=$PROJECT_ROOT/.venv
 
+if ! command -v uv >/dev/null 2>&1; then
+    curl -LsSf https://astral.sh/uv/install.sh | sh
+    export PATH="$HOME/.local/bin:$PATH"
+fi
+
+if ! ldconfig -p 2>/dev/null | grep -q libavutil; then
+    SUDO=""
+    if [ "$(id -u)" -ne 0 ]; then SUDO="sudo"; fi
+    $SUDO apt-get update && $SUDO apt-get install -y ffmpeg
+fi
+
 if [ ! -d "$VENV" ]; then
     uv venv --python 3.12 $VENV
 fi
@@ -23,8 +34,9 @@ uv run --python 3.12 accelerate launch --mixed_precision=bf16 $PROJECT_ROOT/scri
   --log_freq=100 \
   --save_freq=5000 \
   --steps=50000 \
-  --batch_size=32 
+  --batch_size=32 \
   --policy.repo_id=ehalicki/eth-rl-so101-may4-policy
+
 # To resume from a checkpoint, replace --policy.path with:
 #   --policy.type=smolvla \
 #   --config_path=$PROJECT_ROOT/outputs/$RUN_NAME/checkpoints/last/pretrained_model/train_config.json
