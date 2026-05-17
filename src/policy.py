@@ -11,13 +11,11 @@ for _mod in ["lerobot.policies.groot", "lerobot.policies.groot.configuration_gro
 
 import json
 import os
-import re
 import time
 
 import cv2
 import numpy as np
 import torch
-from huggingface_hub import hf_hub_download
 from PIL import Image
 
 from lerobot.policies.smolvla.modeling_smolvla import SmolVLAPolicy as _SmolVLAPolicy
@@ -25,35 +23,6 @@ from lerobot.policies.smolvla.processor_smolvla import make_smolvla_pre_post_pro
 
 # Matches "Put the <object> in[to] [the] <color> bowl." (case-insensitive).
 # Anything that doesn't match is treated as corrupted and mapped to None (dropped).
-_VALID_TASK = re.compile(
-    r"^Put the (\w+) in(?:to)? (?:the )?(\w+) bowl\.$",
-    re.IGNORECASE,
-)
-
-
-def _normalize_task(raw: str) -> str | None:
-    """Return a canonical task string, or None if the string looks corrupted."""
-    m = _VALID_TASK.match(raw.strip())
-    if not m:
-        return None
-    obj, color = m.group(1).lower(), m.group(2).lower()
-    return f"Put the {obj} in the {color} bowl."
-
-
-def build_task_index_to_string(repo_id: str) -> dict:
-    """Load task_index → canonical task string from the dataset's meta/tasks.jsonl.
-
-    Corrupted / garbage strings are detected automatically via regex and mapped to None
-    so callers can drop those rows without any manual per-index overrides.
-    """
-    path = hf_hub_download(repo_id=repo_id, filename="meta/tasks.jsonl", repo_type="dataset")
-    mapping = {}
-    with open(path) as f:
-        for line in f:
-            entry = json.loads(line)
-            mapping[entry["task_index"]] = _normalize_task(entry["task"])
-    return mapping
-
 MODEL_ID = "lerobot/smolvla_base"
 
 # Image key used by the pretrained SmolVLA checkpoint
