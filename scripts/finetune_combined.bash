@@ -2,7 +2,7 @@
 
 RUN_NAME=smolvla_finetune_so101_may17_eval1
 
-PROJECT_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 VENV=$PROJECT_ROOT/.venv
 
 if ! command -v uv >/dev/null 2>&1; then
