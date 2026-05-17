@@ -50,7 +50,12 @@ def copy_episodes(src: LeRobotDataset, dst: LeRobotDataset) -> int:
         task_idx = int(row["task_index"])
         frame["task"] = resolve_task(src, task_idx)
         for cam_key in src.meta.camera_keys:
-            frame[cam_key] = src[i][cam_key]
+            img = src[i][cam_key]
+            if hasattr(img, "detach"):
+                img = img.detach().cpu().numpy()
+            if img.ndim == 3 and img.shape[0] in (1, 3) and img.shape[-1] not in (1, 3):
+                img = img.transpose(1, 2, 0)
+            frame[cam_key] = img
         dst.add_frame(frame)
         pending = True
 
