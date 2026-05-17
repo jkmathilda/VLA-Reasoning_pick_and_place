@@ -31,12 +31,12 @@ from lerobot.utils.visualization_utils import init_rerun
 ROBOT_PORT = "/dev/tty.usbmodem5B141136531"
 LEADER_PORT = "/dev/tty.usbmodem5B141125311"
 
-REPO_ID = "ehalicki/ethz-rl-so101-may4"
+REPO_ID = "ehalicki/ethz-rl-so101-may17-eval1"
 LOCAL_ROOT = Path("~/.cache/huggingface/lerobot").expanduser()
 FPS = 30
 EPISODE_TIME_S = 180
 RESET_TIME_S = 5
-NUM_EPISODES = 20
+NUM_EPISODES = 200
 
 CAMERAS = {
     "wrist_camera": (1920, 1080, 640, 480),   # USB2.0_CAM1
@@ -147,7 +147,7 @@ def main():
             dataset_features = {**action_features, **obs_features}
             dataset = LeRobotDataset.create(
                 repo_id=REPO_ID,
-                root=LOCAL_ROOT,
+                root=local_dataset_path,
                 fps=FPS,
                 features=dataset_features,
                 robot_type=robot.name,

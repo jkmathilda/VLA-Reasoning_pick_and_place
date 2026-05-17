@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # Set these to the values printed by async_server.bash on the server machine.
-CHECKPOINT_PATH=/smolvla_finetune_so101_may4/checkpoints/030000/pretrained_model
+CHECKPOINT_PATH=/home/eryk/.cache/huggingface/hub/models--ehalicki--eth-rl-so101-may4-policies/snapshots/8d0170fa7d9538901b648a6b8e2a0c5ff83f31f8/smolvla_finetune_so101_may4/checkpoints/030000/pretrained_model
 SERVER_ADDRESS=eryk-pc:8080
 
 python -m lerobot.async_inference.robot_client \
@@ -10,7 +10,7 @@ python -m lerobot.async_inference.robot_client \
     --robot.port=/dev/tty.usbmodem5B141136531 \
     --robot.id=eth_rl_so101_follower \
     --robot.cameras="{ camera1: {type: opencv, index_or_path: 0, width: 640, height: 480, fps: 30}}" \
-    --task="Put the banana in the blue bowl." \
+    --task="Place the banana in the green bowl" \
     --policy_type=smolvla \
     --pretrained_name_or_path=$CHECKPOINT_PATH \
     --policy_device=cuda \

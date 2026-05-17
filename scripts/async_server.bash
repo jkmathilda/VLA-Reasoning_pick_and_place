@@ -1,7 +1,7 @@
 #!/bin/bash
 
 REPO_ID=ehalicki/eth-rl-so101-may4-policies
-CHECKPOINT_STEP=030000
+CHECKPOINT_STEP=020000
 CHECKPOINT_SUBPATH=smolvla_finetune_so101_may4/checkpoints/$CHECKPOINT_STEP/pretrained_model
 
 echo "Ensuring $REPO_ID checkpoint $CHECKPOINT_STEP is in the HF cache..."

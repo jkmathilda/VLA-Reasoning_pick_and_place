@@ -25,6 +25,9 @@ from typing import Any
 import torch
 
 
+# this needs to just check if red green or blue is included in the prompy, because we have some dirty task descriptions
+# Eg. Pt the bannna in the red bwl (has red) -> the various permutations of red task description
+
 TASK_PARAPHRASES: dict[str, list[str]] = {
     "Put the banana in the blue bowl.": [
         "Put the banana in the blue bowl.",
