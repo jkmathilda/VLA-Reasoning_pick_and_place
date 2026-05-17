@@ -28,6 +28,7 @@ def copy_episodes(src: LeRobotDataset, dst: LeRobotDataset) -> int:
     n_copied = 0
 
     current_ep = None
+    pending = False
     for i in range(len(hf)):
         ep = int(episode_col[i])
         if current_ep is None:
@@ -35,17 +36,20 @@ def copy_episodes(src: LeRobotDataset, dst: LeRobotDataset) -> int:
         elif ep != current_ep:
             dst.save_episode()
             n_copied += 1
+            pending = False
             current_ep = ep
 
         row = hf[i]
         frame = {k: v for k, v in row.items() if k not in NON_FRAME_KEYS}
         task_idx = int(row["task_index"])
-        frame["task"] = src.meta.tasks.iloc[task_idx]["task"] if hasattr(src.meta.tasks, "iloc") else src.meta.tasks[task_idx]
+        tasks = src.meta.tasks
+        frame["task"] = tasks.iloc[task_idx]["task"] if hasattr(tasks, "iloc") else tasks[task_idx]
         for cam_key in src.meta.camera_keys:
             frame[cam_key] = src[i][cam_key]
         dst.add_frame(frame)
+        pending = True
 
-    if current_ep is not None and dst.has_pending_frames:
+    if pending:
         dst.save_episode()
         n_copied += 1
     return n_copied
@@ -58,9 +62,10 @@ def main():
     ap.add_argument("--root", default=None, help="Local root directory for the new dataset")
     ap.add_argument("--push", action="store_true", help="Push the combined dataset to the Hub")
     ap.add_argument("--private", action="store_true", help="If pushing, make repo private")
+    ap.add_argument("--revision", default="main", help="Branch/revision to load from source repos")
     args = ap.parse_args()
 
-    sources = [LeRobotDataset(repo_id) for repo_id in args.src]
+    sources = [LeRobotDataset(repo_id, revision=args.revision) for repo_id in args.src]
 
     base = sources[0]
     fps = base.fps
