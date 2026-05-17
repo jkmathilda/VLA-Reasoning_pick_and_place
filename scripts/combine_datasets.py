@@ -22,6 +22,21 @@ NON_FRAME_KEYS = {
 }
 
 
+def resolve_task(src: LeRobotDataset, task_idx: int) -> str:
+    tasks = src.meta.tasks
+    # Pandas DataFrame with a 'task' column
+    if hasattr(tasks, "columns") and "task" in getattr(tasks, "columns", []):
+        return tasks.iloc[task_idx]["task"]
+    # Pandas Series indexed by task_index (values are task strings)
+    if hasattr(tasks, "iloc"):
+        val = tasks.iloc[task_idx]
+        return val["task"] if hasattr(val, "__getitem__") and not isinstance(val, str) else val
+    # Plain list/dict fallbacks
+    if isinstance(tasks, dict):
+        return tasks[task_idx]
+    return tasks[task_idx]
+
+
 def copy_episodes(src: LeRobotDataset, dst: LeRobotDataset) -> int:
     hf = src.hf_dataset
     episode_col = hf["episode_index"]
@@ -42,8 +57,7 @@ def copy_episodes(src: LeRobotDataset, dst: LeRobotDataset) -> int:
         row = hf[i]
         frame = {k: v for k, v in row.items() if k not in NON_FRAME_KEYS}
         task_idx = int(row["task_index"])
-        tasks = src.meta.tasks
-        frame["task"] = tasks.iloc[task_idx]["task"] if hasattr(tasks, "iloc") else tasks[task_idx]
+        frame["task"] = resolve_task(src, task_idx)
         for cam_key in src.meta.camera_keys:
             frame[cam_key] = src[i][cam_key]
         dst.add_frame(frame)
