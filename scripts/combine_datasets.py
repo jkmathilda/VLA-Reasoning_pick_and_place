@@ -24,17 +24,8 @@ NON_FRAME_KEYS = {
 
 def resolve_task(src: LeRobotDataset, task_idx: int) -> str:
     tasks = src.meta.tasks
-    # Pandas DataFrame with a 'task' column
-    if hasattr(tasks, "columns") and "task" in getattr(tasks, "columns", []):
-        return tasks.iloc[task_idx]["task"]
-    # Pandas Series indexed by task_index (values are task strings)
-    if hasattr(tasks, "iloc"):
-        val = tasks.iloc[task_idx]
-        return val["task"] if hasattr(val, "__getitem__") and not isinstance(val, str) else val
-    # Plain list/dict fallbacks
-    if isinstance(tasks, dict):
-        return tasks[task_idx]
-    return tasks[task_idx]
+    matches = tasks.index[tasks["task_index"] == task_idx]
+    return str(matches[0])
 
 
 def copy_episodes(src: LeRobotDataset, dst: LeRobotDataset) -> int:
