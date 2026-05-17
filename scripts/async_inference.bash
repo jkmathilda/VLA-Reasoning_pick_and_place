@@ -1,8 +1,8 @@
 #!/bin/bash
 
 # Set these to the values printed by async_server.bash on the server machine.
-CHECKPOINT_PATH=/path/to/checkpoint
-SERVER_ADDRESS=0.0.0.0:8080
+CHECKPOINT_PATH=/smolvla_finetune_so101_may4/checkpoints/030000/pretrained_model
+SERVER_ADDRESS=eryk-pc:8080
 
 python -m lerobot.async_inference.robot_client \
     --server_address=$SERVER_ADDRESS \

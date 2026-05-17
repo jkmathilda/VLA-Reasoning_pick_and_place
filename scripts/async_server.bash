@@ -5,7 +5,10 @@ CHECKPOINT_STEP=030000
 CHECKPOINT_SUBPATH=smolvla_finetune_so101_may4/checkpoints/$CHECKPOINT_STEP/pretrained_model
 
 echo "Ensuring $REPO_ID checkpoint $CHECKPOINT_STEP is in the HF cache..."
-SNAPSHOT_DIR=$(huggingface-cli download $REPO_ID --include "$CHECKPOINT_SUBPATH/*")
+SNAPSHOT_DIR=$(python -c "
+from huggingface_hub import snapshot_download
+print(snapshot_download('$REPO_ID', allow_patterns=['$CHECKPOINT_SUBPATH/*']))
+")
 CHECKPOINT_PATH=$SNAPSHOT_DIR/$CHECKPOINT_SUBPATH
 echo "Checkpoint available at:"
 echo "  $CHECKPOINT_PATH"
