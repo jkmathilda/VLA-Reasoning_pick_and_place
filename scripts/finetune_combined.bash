@@ -22,7 +22,7 @@ fi
 source $VENV/bin/activate
 uv pip install -r $PROJECT_ROOT/requirements.txt
 
-uv run --python 3.12 accelerate launch --mixed_precision=bf16 $PROJECT_ROOT/scripts/train_lerobot.py \
+uv run --python 3.12 accelerate launch --mixed_precision=bf16 $PROJECT_ROOT/scripts/train_lerobot_eval1.py \
   --dataset.repo_id=ehalicki/eth-rl-so101-combined \
   --output_dir=$PROJECT_ROOT/outputs/$RUN_NAME \
   --job_name=$RUN_NAME \
