@@ -15,7 +15,7 @@
 # limitations under the License.
 import dataclasses
 import json
-import loggingx
+import logging
 import random
 import time
 from contextlib import nullcontext
