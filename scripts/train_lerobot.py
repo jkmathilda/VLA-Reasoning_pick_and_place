@@ -25,32 +25,62 @@ from typing import Any
 import torch
 
 
-# this needs to just check if red green or blue is included in the prompy, because we have some dirty task descriptions
-# Eg. Pt the bannna in the red bwl (has red) -> the various permutations of red task description
+# Map color keyword (matched case-insensitively as a substring in the task description)
+# to paraphrase candidates. Handles dirty/misspelled task descriptions like
+# "Pt the bannna in the red bwl" by only checking for the color word.
+_VERB_TEMPLATES: list[str] = [
+    "Put the banana in the {color} bowl.",
+    "Put the banana into the {color} bowl.",
+    "Place the banana in the {color} bowl.",
+    "Place the banana into the {color} bowl.",
+    "Move the banana to the {color} bowl.",
+    "Move the banana into the {color} bowl.",
+    "Drop the banana in the {color} bowl.",
+    "Drop the banana into the {color} bowl.",
+    "Set the banana in the {color} bowl.",
+    "Set the banana into the {color} bowl.",
+    "Transfer the banana to the {color} bowl.",
+    "Transfer the banana into the {color} bowl.",
+    "Pick up the banana and put it in the {color} bowl.",
+    "Pick up the banana and place it in the {color} bowl.",
+    "Pick up the banana and drop it in the {color} bowl.",
+    "Grab the banana and put it in the {color} bowl.",
+    "Grab the banana and place it in the {color} bowl.",
+    "Take the banana and put it in the {color} bowl.",
+    "Take the banana and place it in the {color} bowl.",
+    "Relocate the banana to the {color} bowl.",
+    "Deposit the banana in the {color} bowl.",
+    "Deposit the banana into the {color} bowl.",
+    "The banana goes in the {color} bowl.",
+    "The banana belongs in the {color} bowl.",
+    "Banana into the {color} bowl, please.",
+    "Please put the banana in the {color} bowl.",
+    "Please place the banana in the {color} bowl.",
+    "Can you put the banana in the {color} bowl?",
+    "Move the yellow fruit into the {color} bowl.",
+    "Place the yellow fruit in the {color} bowl.",
+    "Put the yellow fruit in the {color} bowl.",
+]
 
-TASK_PARAPHRASES: dict[str, list[str]] = {
-    "Put the banana in the blue bowl.": [
-        "Put the banana in the blue bowl.",
-        "Place the banana in the blue bowl.",
-        "Put the banana into the blue bowl.",
-        "Place the banana into the blue bowl.",
-        "Move the banana to the blue bowl.",
-    ],
-    "Put the banana in the red bowl.": [
-        "Put the banana in the red bowl.",
-        "Place the banana in the red bowl.",
-        "Put the banana into the red bowl.",
-        "Place the banana into the red bowl.",
-        "Move the banana to the red bowl.",
-    ],
-    "Put the banana in the green bowl.": [
-        "Put the banana in the green bowl.",
-        "Place the banana in the green bowl.",
-        "Put the banana into the green bowl.",
-        "Place the banana into the green bowl.",
-        "Move the banana to the green bowl.",
-    ],
+
+def _build_paraphrases(color: str) -> list[str]:
+    return [tmpl.format(color=color) for tmpl in _VERB_TEMPLATES]
+
+
+# Map color keyword (matched case-insensitively as a substring in the task description)
+# to paraphrase candidates. Handles dirty/misspelled task descriptions like
+# "Pt the bannna in the red bwl" by only checking for the color word.
+TASK_PARAPHRASES_BY_COLOR: dict[str, list[str]] = {
+    color: _build_paraphrases(color) for color in ("blue", "red", "green")
 }
+
+
+def _paraphrase_one(task: str) -> str:
+    lowered = task.lower()
+    for color, candidates in TASK_PARAPHRASES_BY_COLOR.items():
+        if color in lowered:
+            return random.choice(candidates)
+    return task
 
 
 IMAGE_KEY_PREFIX = "observation.images."
@@ -95,9 +125,9 @@ def paraphrase_task_field(batch: Any) -> Any:
     if task is None:
         return batch
     if isinstance(task, str):
-        batch["task"] = random.choice(TASK_PARAPHRASES.get(task, [task]))
+        batch["task"] = _paraphrase_one(task)
     elif isinstance(task, list):
-        batch["task"] = [random.choice(TASK_PARAPHRASES.get(t, [t])) for t in task]
+        batch["task"] = [_paraphrase_one(t) for t in task]
     return batch
 from accelerate import Accelerator
 from termcolor import colored
