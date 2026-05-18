@@ -1,6 +1,6 @@
 #!/bin/bash
 
-RUN_NAME=smolvla_finetune_so101_may17_eval1
+RUN_NAME=smolvla_finetune_so101_may18_eval2
 
 PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 VENV=$PROJECT_ROOT/.venv
@@ -24,6 +24,7 @@ uv pip install -r $PROJECT_ROOT/requirements.txt
 
 uv run --python 3.12 accelerate launch --mixed_precision=bf16 $PROJECT_ROOT/scripts/train_lerobot_eval2.py \
   --dataset.repo_id=ehalicki/eth-rl-so101-combined \
+  --dataset.revision=main \
   --output_dir=$PROJECT_ROOT/outputs/$RUN_NAME \
   --job_name=$RUN_NAME \
   --policy.device=cuda \
