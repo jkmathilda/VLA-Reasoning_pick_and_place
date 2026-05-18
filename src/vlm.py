@@ -54,14 +54,8 @@ class SceneVLM:
                 ],
             }
         ]
-        inputs = self.processor.apply_chat_template(
-            messages,
-            images=[image],
-            add_generation_prompt=True,
-            tokenize=True,
-            return_dict=True,
-            return_tensors="pt",
-        ).to(self.device)
+        text = self.processor.apply_chat_template(messages, add_generation_prompt=True)
+        inputs = self.processor(text=text, images=[image], return_tensors="pt").to(self.device)
 
         outputs = self.model.generate(**inputs, max_new_tokens=8, do_sample=False)
         answer = self.processor.decode(
