@@ -45,7 +45,7 @@ def find_camera(target_w: int, target_h: int) -> int:
     for i in range(10):
         cap = cv2.VideoCapture(i)
         if not cap.isOpened():
-            break
+            continue
         w = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
         h = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
         cap.release()
