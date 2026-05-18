@@ -22,7 +22,7 @@ fi
 source $VENV/bin/activate
 uv pip install -r $PROJECT_ROOT/requirements.txt
 
-uv run --python 3.12 accelerate launch --mixed_precision=bf16 $PROJECT_ROOT/scripts/train_lerobot_eval1.py \
+uv run --python 3.12 accelerate launch --mixed_precision=bf16 $PROJECT_ROOT/scripts/train_lerobot_eval2.py \
   --dataset.repo_id=ehalicki/eth-rl-so101-combined \
   --output_dir=$PROJECT_ROOT/outputs/$RUN_NAME \
   --job_name=$RUN_NAME \
@@ -33,9 +33,9 @@ uv run --python 3.12 accelerate launch --mixed_precision=bf16 $PROJECT_ROOT/scri
   --num_workers=4 \
   --log_freq=100 \
   --save_freq=5000 \
-  --steps=50000 \
+  --steps=100000 \
   --batch_size=32 \
-  --policy.repo_id=ehalicki/eth-rl-so101-may17-policy
+  --policy.repo_id=ehalicki/eth-rl-so101-may18-policies
 
 # To resume from a checkpoint, replace --policy.path with:
 #   --policy.type=smolvla \
