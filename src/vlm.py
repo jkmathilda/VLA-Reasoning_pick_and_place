@@ -33,14 +33,15 @@ class SceneVLM:
                 device = "cpu"
         self.device = device
 
-        print(f"[VLM] Loading {model_id} on {self.device}...")
+        import sys
+        print(f"[VLM] Loading {model_id} on {self.device}...", file=sys.stderr)
         self.processor = AutoProcessor.from_pretrained(model_id)
         self.model = AutoModelForImageTextToText.from_pretrained(
             model_id,
             torch_dtype=torch.float16 if self.device != "cpu" else torch.float32,
         ).to(self.device)
         self.model.eval()
-        print("[VLM] Ready.")
+        print("[VLM] Ready.", file=sys.stderr)
 
     @torch.no_grad()
     def query(self, image: Image.Image, task_spec: str) -> str:
@@ -75,5 +76,6 @@ class SceneVLM:
             task = "Put the banana in the green bowl."
 
 
-        print(f"[VLM] Position: {position!r} → task: {task!r}")
+        import sys
+        print(f"[VLM] Position: {position!r} → task: {task!r}", file=sys.stderr)
         return task
