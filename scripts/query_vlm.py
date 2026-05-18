@@ -21,14 +21,14 @@ import numpy as np
 from PIL import Image
 
 # Must match the camera used during recording.
-CAMERA_DEFAULT_W = 1920
-CAMERA_DEFAULT_H = 1080
+CAMERA_DEFAULT_W = 640
+CAMERA_DEFAULT_H = 480
 
 # Mirror of HOME_JOINTS in src/policy.py — keep in sync.
 HOME_JOINTS = {
     "shoulder_pan.pos": 0.0,
-    "shoulder_lift.pos": -60.0,
-    "elbow_flex.pos":    80.0,
+    "shoulder_lift.pos": -50.0,
+    "elbow_flex.pos":    25.0,
     "wrist_flex.pos":    80.0,
     "wrist_roll.pos":    0.0,
     "gripper.pos":       0.0,
@@ -71,7 +71,7 @@ def move_to_home_and_capture() -> Image.Image:
     from lerobot.robots.so_follower import SO101Follower
     from lerobot.robots.so_follower.config_so_follower import SO101FollowerConfig
 
-    ROBOT_PORT = "/dev/tty.usbmodem5B141136531"
+    ROBOT_PORT = "/dev/ttyACM0"
     CAMERA_NAME = "camera1"
 
     cam_idx = find_camera(CAMERA_DEFAULT_W, CAMERA_DEFAULT_H)
