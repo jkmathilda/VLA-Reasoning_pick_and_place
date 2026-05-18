@@ -21,9 +21,6 @@ _PROMPT = (
     "Reply with exactly one word: left, middle, or right."
 )
 
-_TASK_TEMPLATE = "Put the banana in the {position} bowl."
-
-
 class SceneVLM:
     def __init__(self, model_id: str = VLM_MODEL_ID, device: str | None = None):
         if device is None:
@@ -74,6 +71,13 @@ class SceneVLM:
         if position is None:
             raise ValueError(f"VLM returned unexpected answer: {answer!r}")
 
-        task = _TASK_TEMPLATE.format(position=position)
+        if position == 'left':
+            task = "Put the banana in the blue bowl."
+        elif position == 'middle':
+            task = "Put the banana in the red bowl."
+        else: # right
+            task = "Put the banana in the green bowl."
+
+
         print(f"[VLM] Position: {position!r} → task: {task!r}")
         return task
