@@ -4,11 +4,12 @@ Capture one overview frame from the robot camera, query SmolVLM, and print
 the task string to stdout (nothing else). All other logging goes to stderr.
 
 Usage (standalone):
-    python scripts/query_vlm.py
+    python scripts/query_vlm.py --task "Place the banana in the leftmost bowl"
 
 Usage (from bash — capture task into a variable):
-    TASK=$(python scripts/query_vlm.py)
+    TASK=$(python scripts/query_vlm.py --task "...")
 """
+import argparse
 import sys
 import time
 from pathlib import Path
@@ -104,18 +105,21 @@ def move_to_home_and_capture() -> Image.Image:
 def main():
     from vlm import SceneVLM
 
-    move_home = "--no-home" not in sys.argv
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--task", required=True, help="High-level task specification to resolve into a bowl position.")
+    parser.add_argument("--no-home", action="store_true", help="Skip moving robot to home position before capture.")
+    args = parser.parse_args()
 
-    if move_home:
+    if not args.no_home:
         image = move_to_home_and_capture()
     else:
         eprint("[query_vlm] Skipping home move — capturing directly from camera...")
         idx = find_camera(CAMERA_DEFAULT_W, CAMERA_DEFAULT_H)
         image = capture_frame(idx)
 
-    eprint("[query_vlm] Querying VLM...")
+    eprint(f"[query_vlm] Querying VLM with task spec: {args.task!r}")
     vlm = SceneVLM()
-    task = vlm.query(image)
+    task = vlm.query(image, task_spec=args.task)
 
     # Only the task goes to stdout — everything else used stderr.
     print(task)

@@ -14,10 +14,11 @@ from transformers import AutoModelForImageTextToText, AutoProcessor
 
 VLM_MODEL_ID = os.getenv("VLM_MODEL_ID", "HuggingFaceTB/SmolVLM-256M-Instruct")
 
-_PROMPT = (
+_PROMPT_TEMPLATE = (
     "Look at this robot workspace. "
     "There are three bowls: one on the left, one in the middle, and one on the right. "
-    "Which bowl should the banana be placed in? "
+    "The user's instruction is: \"{task_spec}\". "
+    "Based on this instruction and the scene, which bowl should the banana be placed in? "
     "Reply with exactly one word: left, middle, or right."
 )
 
@@ -42,13 +43,14 @@ class SceneVLM:
         print("[VLM] Ready.")
 
     @torch.no_grad()
-    def query(self, image: Image.Image) -> str:
+    def query(self, image: Image.Image, task_spec: str) -> str:
+        prompt = _PROMPT_TEMPLATE.format(task_spec=task_spec)
         messages = [
             {
                 "role": "user",
                 "content": [
                     {"type": "image"},
-                    {"type": "text", "text": _PROMPT},
+                    {"type": "text", "text": prompt},
                 ],
             }
         ]
