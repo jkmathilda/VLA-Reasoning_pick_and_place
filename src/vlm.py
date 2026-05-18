@@ -7,6 +7,7 @@ pick-and-place task instruction for the robot.
 from __future__ import annotations
 
 import os
+import sys
 
 import torch
 from PIL import Image
@@ -18,8 +19,10 @@ _PROMPT_TEMPLATE = (
     "Look at this robot workspace. "
     "There are three bowls: one on the left, one in the middle, and one on the right. "
     "The user's instruction is: \"{task_spec}\". "
-    "Based on this instruction and the scene, which bowl should the banana be placed in? "
-    "Reply with exactly one word: left, middle, or right."
+    "Based on this instruction and the scene, which bowl should the banana be placed in? Reason yourself."
+    # "Reply with exactly one word: left, middle, or right."
+    # "What is the color of the bowl on the left?"
+    "Reply with left, middle, or right with your reasoning."
 )
 
 class SceneVLM:
@@ -33,7 +36,6 @@ class SceneVLM:
                 device = "cpu"
         self.device = device
 
-        import sys
         print(f"[VLM] Loading {model_id} on {self.device}...", file=sys.stderr)
         self.processor = AutoProcessor.from_pretrained(model_id)
         self.model = AutoModelForImageTextToText.from_pretrained(
@@ -46,6 +48,7 @@ class SceneVLM:
     @torch.no_grad()
     def query(self, image: Image.Image, task_spec: str) -> str:
         prompt = _PROMPT_TEMPLATE.format(task_spec=task_spec)
+        print(f"TEST1: {prompt}")
         messages = [
             {
                 "role": "user",
@@ -58,11 +61,13 @@ class SceneVLM:
         text = self.processor.apply_chat_template(messages, add_generation_prompt=True)
         inputs = self.processor(text=text, images=[image], return_tensors="pt").to(self.device)
 
-        outputs = self.model.generate(**inputs, max_new_tokens=8, do_sample=False)
+        outputs = self.model.generate(**inputs, max_new_tokens=5000, do_sample=False)
         answer = self.processor.decode(
             outputs[0][inputs["input_ids"].shape[-1]:],
             skip_special_tokens=True,
         ).strip().lower()
+
+        print(f"TEST2: {answer}")
 
         position = next((w for w in ("left", "middle", "right") if w in answer), None)
         if position is None:

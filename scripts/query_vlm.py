@@ -28,7 +28,7 @@ CAMERA_DEFAULT_H = 480
 HOME_JOINTS = {
     "shoulder_pan.pos": 0.0,
     "shoulder_lift.pos": -50.0,
-    "elbow_flex.pos":    25.0,
+    "elbow_flex.pos":    15.0,
     "wrist_flex.pos":    80.0,
     "wrist_roll.pos":    0.0,
     "gripper.pos":       0.0,
