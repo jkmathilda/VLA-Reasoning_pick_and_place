@@ -17,16 +17,29 @@ from transformers import AutoModelForImageTextToText, AutoProcessor
 
 VLM_MODEL_ID = os.getenv("VLM_MODEL_ID", "HuggingFaceTB/SmolVLM2-2.2B-Instruct")
 
-_LOCATE_COLOR_PROMPT = (
-    "Look at this robot workspace. There are three bowls arranged in a "
-    "horizontal row from the robot's perspective: one on the LEFT, one in "
-    "the MIDDLE, and one on the RIGHT. The bowls are red, green, and blue "
-    "(one of each). There is also a yellow banana in the scene — the "
-    "banana is NOT a bowl, ignore it.\n"
+_PERCEPTION_PROMPT = (
+    "Look carefully at this robot workspace. The scene contains:\n"
+    "  - Exactly THREE bowls (one RED, one GREEN, one BLUE — one of each).\n"
+    "  - A yellow banana. The banana is NOT a bowl — ignore it for this task.\n"
     "\n"
-    "Question: where is the {color} bowl located?\n"
+    "IMPORTANT — camera geometry:\n"
+    "The camera is mounted on the robot looking down and forward at an "
+    "angle, so the bowls form an ARC, not a straight horizontal line. "
+    "Specifically:\n"
+    "  - The LEFT bowl appears in the bottom-left area of the image.\n"
+    "  - The MIDDLE bowl is the one closest to the TOP of the image "
+    "(it is farther from the robot, so perspective makes it appear higher "
+    "up in the frame), and is horizontally centered.\n"
+    "  - The RIGHT bowl appears in the bottom-right area of the image.\n"
     "\n"
-    "Reply with EXACTLY one word: left, middle, or right."
+    "So to identify the middle bowl, do NOT just pick the one in the "
+    "geometric center of the image — pick the one that is highest in the "
+    "frame. The other two (left and right) sit lower and to the sides.\n"
+    "\n"
+    "Task: identify the color of each of the three bowls (left, middle, right).\n"
+    "\n"
+    "Reply on ONE line in this exact format (lowercase, no extra words):\n"
+    "left=<color>, middle=<color>, right=<color>"
 )
 
 _REASONING_PROMPT = (
@@ -136,39 +149,25 @@ class SceneVLM:
             skip_special_tokens=True,
         ).strip().lower()
 
-    def _locate_color(self, image: Image.Image, color: str) -> str | None:
-        """Ask the VLM where the bowl of a given color is. Returns 'left'/'middle'/'right' or None."""
-        raw = self._generate(
-            image,
-            _LOCATE_COLOR_PROMPT.format(color=color),
-            max_new_tokens=8,
-        )
-        print(f"[VLM] locate({color!r}) raw={raw!r}", file=sys.stderr)
-        return next((p for p in ("left", "middle", "right") if p in raw), None)
-
     def _perceive_layout(self, image: Image.Image) -> dict[str, str]:
-        """Run three color-localization queries and reconcile into a position->color map."""
+        """Single VLM call to identify all three bowl colors at once."""
+        import re
+        raw = self._generate(image, _PERCEPTION_PROMPT, max_new_tokens=64)
+        print(f"[VLM] Perception raw: {raw!r}", file=sys.stderr)
+
         colors = ("red", "green", "blue")
         positions = ("left", "middle", "right")
-
-        color_to_pos: dict[str, str | None] = {c: self._locate_color(image, c) for c in colors}
-        print(f"[VLM] color_to_pos raw: {color_to_pos}", file=sys.stderr)
-
-        # Resolve conflicts: if two colors claim the same position, fill in by elimination.
         layout: dict[str, str] = {}
-        taken_pos: set[str] = set()
-        # First pass: assign colors whose position is unique.
-        for c in colors:
-            p = color_to_pos[c]
-            if p and p not in taken_pos:
-                # Check no other color also claimed this position uniquely.
-                conflict = any(color_to_pos[c2] == p for c2 in colors if c2 != c)
-                if not conflict:
-                    layout[p] = c
-                    taken_pos.add(p)
-        # Second pass: fill remaining positions with remaining colors (deterministic order).
-        remaining_colors = [c for c in colors if c not in layout.values()]
-        remaining_positions = [p for p in positions if p not in taken_pos]
+        for pos in positions:
+            m = re.search(rf"{pos}\s*[:=]\s*(red|green|blue)", raw)
+            if m:
+                layout[pos] = m.group(1)
+
+        # If anything is missing or duplicated, fill remaining positions with
+        # remaining colors in a deterministic order.
+        used_colors = set(layout.values())
+        remaining_colors = [c for c in colors if c not in used_colors]
+        remaining_positions = [p for p in positions if p not in layout]
         for p, c in zip(remaining_positions, remaining_colors):
             layout[p] = c
         return layout
