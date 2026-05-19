@@ -18,14 +18,21 @@ from transformers import AutoModelForImageTextToText, AutoProcessor
 VLM_MODEL_ID = os.getenv("VLM_MODEL_ID", "HuggingFaceTB/SmolVLM2-500M-Video-Instruct")
 
 _PERCEPTION_PROMPT = (
-    "Look at this robot workspace. There are three bowls arranged in a row "
-    "from the robot's perspective (left, middle, right). One is red, one is "
-    "green, one is blue. Some bowls may be partially cut off at the edge of "
-    "the image — there are always exactly three bowls, so the missing color "
-    "is whichever of {red, green, blue} you cannot see.\n"
+    "Look at this robot workspace. The scene contains:\n"
+    "  - Exactly THREE bowls arranged in a horizontal row. The bowls are "
+    "RED, GREEN, and BLUE (one of each, in some order).\n"
+    "  - A single YELLOW BANANA in the middle area. The banana is NOT a "
+    "bowl — ignore it when identifying bowl colors.\n"
     "\n"
-    "Identify the color of each bowl. Reply on ONE line in this exact format "
-    "(lowercase, no extra words):\n"
+    "Some bowls may be partially cut off at the edge of the frame, but "
+    "there are always exactly three bowls (one red, one green, one blue). "
+    "If you only clearly see two bowls, the third one's color must be "
+    "whichever of {red, green, blue} is not visible.\n"
+    "\n"
+    "From the robot's perspective, going LEFT to RIGHT across the row of "
+    "bowls (not including the banana), what color is each bowl?\n"
+    "\n"
+    "Reply on ONE line in this exact format (lowercase, no other words):\n"
     "left=<color>, middle=<color>, right=<color>"
 )
 
