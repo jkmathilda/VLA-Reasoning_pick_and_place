@@ -4,8 +4,10 @@
 # The physical bowl order is fixed as Blue-Red-Green from left to right, so
 # color names map 1:1 to positions: blue=left, red=middle, green=right.
 # This script just sed-substitutes the color word(s) in the task string with
-# the matching position word and sends that directly to the stock lerobot
-# robot_client — no VLM step, no homing, no overview snapshot.
+# the matching position word and runs the same robot_client_with_vlm.py
+# entrypoint as vlm_inference.bash — but with SKIP_VLM=1 so it homes the
+# robot but skips the VLM load/query (no perception needed when the bowl
+# order is known a priori).
 #
 # Usage:
 #   bash scripts/color_inference.bash --task "Place the banana in the blue bowl"
@@ -15,6 +17,8 @@ set -euo pipefail
 
 CHECKPOINT_PATH=/home/team11/.cache/huggingface/hub/models--ehalicki--eth-rl-so101-may17-policies/snapshots/80dd4a5d09322b58a891c6221aebb270a6200fc4/checkpoints/025000/pretrained_model
 SERVER_ADDRESS=127.0.0.1:50001
+
+PROJECT_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 
 TASK=""
 while [[ $# -gt 0 ]]; do
@@ -49,10 +53,11 @@ RESOLVED_TASK=$(echo "$TASK" | sed -E '
     s/\b[Gg]reen\b/right/g
 ')
 
-echo ">>> Task spec:    $TASK"
+echo ">>> Task spec:     $TASK"
 echo ">>> Resolved task: $RESOLVED_TASK"
+echo ">>> Launching robot client with SKIP_VLM=1 (homing only, no VLM)..."
 
-python -m lerobot.async_inference.robot_client \
+SKIP_VLM=1 python "$PROJECT_ROOT/scripts/robot_client_with_vlm.py" \
     --server_address=$SERVER_ADDRESS \
     --robot.type=so101_follower \
     --robot.port=/dev/ttyACM0 \

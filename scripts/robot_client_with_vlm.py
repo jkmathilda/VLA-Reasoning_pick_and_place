@@ -44,6 +44,7 @@ Example:
 """
 
 import logging
+import os
 import pickle  # nosec
 import sys
 import threading
@@ -515,6 +516,11 @@ def _pick_camera_name(robot) -> str:
 def async_client(cfg: RobotClientConfig):
     logging.info(pformat(asdict(cfg)))
 
+    # SKIP_VLM=1 → home the robot but don't load/query SmolVLM. Used by
+    # scripts/color_inference.bash for Eval 1, where the task string is
+    # already a position (left/middle/right) and no perception is needed.
+    skip_vlm = os.environ.get("SKIP_VLM", "").lower() in ("1", "true", "yes")
+
     client = RobotClient(cfg)
 
     if not client.start():
@@ -522,25 +528,35 @@ def async_client(cfg: RobotClientConfig):
         client.stop()
         return
 
-    # Load the VLM BEFORE homing so model load doesn't count against eval
-    # time (timing begins when the arm starts moving).
     camera_name = _pick_camera_name(client.robot)
-    try:
-        vlm = load_vlm(client.logger)
-    except Exception:
-        client.logger.exception("VLM load failed; shutting down client.")
-        client.stop()
-        raise
+    if skip_vlm:
+        client.logger.info("SKIP_VLM set — homing robot, skipping VLM load/query.")
+        try:
+            _move_to_home(client.robot, client.logger)
+        except Exception:
+            client.logger.exception("Homing failed; shutting down client.")
+            client.stop()
+            raise
+        resolved_task = cfg.task
+    else:
+        # Load the VLM BEFORE homing so model load doesn't count against
+        # eval time (timing begins when the arm starts moving).
+        try:
+            vlm = load_vlm(client.logger)
+        except Exception:
+            client.logger.exception("VLM load failed; shutting down client.")
+            client.stop()
+            raise
 
-    client.logger.info("VLM ready — homing robot and resolving task...")
-    try:
-        _move_to_home(client.robot, client.logger)
-        image = _capture_overview_frame(client.robot, camera_name, client.logger)
-        resolved_task = query_vlm(vlm, image, task_spec=cfg.task, logger=client.logger)
-    except Exception:
-        client.logger.exception("Homing / VLM task resolution failed; shutting down client.")
-        client.stop()
-        raise
+        client.logger.info("VLM ready — homing robot and resolving task...")
+        try:
+            _move_to_home(client.robot, client.logger)
+            image = _capture_overview_frame(client.robot, camera_name, client.logger)
+            resolved_task = query_vlm(vlm, image, task_spec=cfg.task, logger=client.logger)
+        except Exception:
+            client.logger.exception("Homing / VLM task resolution failed; shutting down client.")
+            client.stop()
+            raise
 
     client.logger.info(f"Starting action receiver thread (task={resolved_task!r})...")
     action_receiver_thread = threading.Thread(target=client.receive_actions, daemon=True)
