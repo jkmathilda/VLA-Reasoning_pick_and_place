@@ -240,12 +240,23 @@ class SceneVLM:
         reasoning_text = self._generate_messages(reasoning_messages, max_new_tokens=2000)
         print(f"[VLM] Phase 1 reasoning: {reasoning_text!r}", file=sys.stderr)
 
-        # Phase 2: feed the reasoning back as an assistant turn, then ask
-        # for the strict canonical final sentence.
-        final_messages = reasoning_messages + [
-            {"role": "assistant", "content": [{"type": "text", "text": reasoning_text}]},
-            {"role": "user", "content": [{"type": "text", "text": _FINAL_PROMPT}]},
-        ]
+        # Phase 2: build a single user turn that contains the original
+        # reasoning prompt, the model's own reasoning text appended in-line,
+        # and the final strict-output instruction.
+        combined_text = (
+            _REASONING_PROMPT.format(task_spec=task_spec)
+            + "\n\nYour reasoning so far:\n"
+            + reasoning_text
+            + "\n\n"
+            + _FINAL_PROMPT
+        )
+        final_messages = [{
+            "role": "user",
+            "content": [
+                {"type": "image", "image": image},
+                {"type": "text", "text": combined_text},
+            ],
+        }]
         final_raw = self._generate_messages(final_messages, max_new_tokens=24).lower()
         print(f"[VLM] Phase 2 final raw: {final_raw!r}", file=sys.stderr)
 
