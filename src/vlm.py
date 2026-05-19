@@ -17,23 +17,16 @@ from transformers import AutoModelForImageTextToText, AutoProcessor
 
 VLM_MODEL_ID = os.getenv("VLM_MODEL_ID", "HuggingFaceTB/SmolVLM2-2.2B-Instruct")
 
-_PERCEPTION_PROMPT = (
-    "Look at this robot workspace. The scene contains:\n"
-    "  - Exactly THREE bowls arranged in a horizontal row. The bowls are "
-    "RED, GREEN, and BLUE (one of each, in some order).\n"
-    "  - A single YELLOW BANANA in the middle area. The banana is NOT a "
-    "bowl — ignore it when identifying bowl colors.\n"
+_LOCATE_COLOR_PROMPT = (
+    "Look at this robot workspace. There are three bowls arranged in a "
+    "horizontal row from the robot's perspective: one on the LEFT, one in "
+    "the MIDDLE, and one on the RIGHT. The bowls are red, green, and blue "
+    "(one of each). There is also a yellow banana in the scene — the "
+    "banana is NOT a bowl, ignore it.\n"
     "\n"
-    "Some bowls may be partially cut off at the edge of the frame, but "
-    "there are always exactly three bowls (one red, one green, one blue). "
-    "If you only clearly see two bowls, the third one's color must be "
-    "whichever of {red, green, blue} is not visible.\n"
+    "Question: where is the {color} bowl located?\n"
     "\n"
-    "From the robot's perspective, going LEFT to RIGHT across the row of "
-    "bowls (not including the banana), what color is each bowl?\n"
-    "\n"
-    "Reply on ONE line in this exact format (lowercase, no other words):\n"
-    "left=<color>, middle=<color>, right=<color>"
+    "Reply with EXACTLY one word: left, middle, or right."
 )
 
 _REASONING_PROMPT = (
@@ -143,27 +136,41 @@ class SceneVLM:
             skip_special_tokens=True,
         ).strip().lower()
 
-    def _parse_layout(self, raw: str) -> dict[str, str]:
-        """Extract {left,middle,right} -> color from a free-form VLM response."""
-        import re
+    def _locate_color(self, image: Image.Image, color: str) -> str | None:
+        """Ask the VLM where the bowl of a given color is. Returns 'left'/'middle'/'right' or None."""
+        raw = self._generate(
+            image,
+            _LOCATE_COLOR_PROMPT.format(color=color),
+            max_new_tokens=8,
+        )
+        print(f"[VLM] locate({color!r}) raw={raw!r}", file=sys.stderr)
+        return next((p for p in ("left", "middle", "right") if p in raw), None)
+
+    def _perceive_layout(self, image: Image.Image) -> dict[str, str]:
+        """Run three color-localization queries and reconcile into a position->color map."""
         colors = ("red", "green", "blue")
+        positions = ("left", "middle", "right")
+
+        color_to_pos: dict[str, str | None] = {c: self._locate_color(image, c) for c in colors}
+        print(f"[VLM] color_to_pos raw: {color_to_pos}", file=sys.stderr)
+
+        # Resolve conflicts: if two colors claim the same position, fill in by elimination.
         layout: dict[str, str] = {}
-        for pos in ("left", "middle", "right"):
-            m = re.search(rf"{pos}\s*[:=]\s*(red|green|blue)", raw)
-            if m:
-                layout[pos] = m.group(1)
-        # Fill in the missing slot if exactly one is unknown.
-        missing_pos = [p for p in ("left", "middle", "right") if p not in layout]
-        if len(missing_pos) == 1:
-            used = set(layout.values())
-            remaining = [c for c in colors if c not in used]
-            if len(remaining) == 1:
-                layout[missing_pos[0]] = remaining[0]
-        # Final fallback for anything still missing.
-        for p in ("left", "middle", "right"):
-            if p not in layout:
-                used = set(layout.values())
-                layout[p] = next((c for c in colors if c not in used), "red")
+        taken_pos: set[str] = set()
+        # First pass: assign colors whose position is unique.
+        for c in colors:
+            p = color_to_pos[c]
+            if p and p not in taken_pos:
+                # Check no other color also claimed this position uniquely.
+                conflict = any(color_to_pos[c2] == p for c2 in colors if c2 != c)
+                if not conflict:
+                    layout[p] = c
+                    taken_pos.add(p)
+        # Second pass: fill remaining positions with remaining colors (deterministic order).
+        remaining_colors = [c for c in colors if c not in layout.values()]
+        remaining_positions = [p for p in positions if p not in taken_pos]
+        for p, c in zip(remaining_positions, remaining_colors):
+            layout[p] = c
         return layout
 
     def query(self, image: Image.Image, task_spec: str) -> str:
@@ -181,10 +188,8 @@ class SceneVLM:
         )
         print(f"[VLM] Image description: {describe_raw!r}", file=sys.stderr)
 
-        # Pass 1: perception — extract bowl layout.
-        perception_raw = self._generate(image, _PERCEPTION_PROMPT, max_new_tokens=64)
-        print(f"[VLM] Perception raw: {perception_raw!r}", file=sys.stderr)
-        layout = self._parse_layout(perception_raw)
+        # Pass 1: perception — ask the VLM where each colored bowl is (3 queries).
+        layout = self._perceive_layout(image)
         print(f"[VLM] Parsed layout: {layout}", file=sys.stderr)
 
         # Pass 2: reasoning — given the layout, resolve task_spec to a position.
