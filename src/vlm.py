@@ -105,12 +105,31 @@ class SceneVLM:
 
     @torch.no_grad()
     def _generate(self, image: Image.Image, prompt: str, max_new_tokens: int) -> str:
+        # SmolVLM2 expects the image inline in the message content and
+        # tokenization to happen through apply_chat_template.
         messages = [{
             "role": "user",
-            "content": [{"type": "image"}, {"type": "text", "text": prompt}],
+            "content": [
+                {"type": "image", "image": image},
+                {"type": "text", "text": prompt},
+            ],
         }]
-        text = self.processor.apply_chat_template(messages, add_generation_prompt=True)
-        inputs = self.processor(text=text, images=[image], return_tensors="pt").to(self.device)
+        inputs = self.processor.apply_chat_template(
+            messages,
+            add_generation_prompt=True,
+            tokenize=True,
+            return_dict=True,
+            return_tensors="pt",
+        )
+        target_dtype = torch.float16 if self.device != "cpu" else torch.float32
+        inputs = {
+            k: (v.to(self.device, dtype=target_dtype) if v.dtype.is_floating_point else v.to(self.device))
+            for k, v in inputs.items()
+        }
+        # Sanity check: confirm pixel_values made it in.
+        has_pixels = "pixel_values" in inputs
+        px_shape = tuple(inputs["pixel_values"].shape) if has_pixels else None
+        print(f"[VLM] input keys={list(inputs.keys())} pixel_values_shape={px_shape}", file=sys.stderr)
         outputs = self.model.generate(**inputs, max_new_tokens=max_new_tokens, do_sample=False)
         return self.processor.decode(
             outputs[0][inputs["input_ids"].shape[-1]:],
