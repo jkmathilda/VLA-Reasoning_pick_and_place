@@ -168,6 +168,17 @@ _REASONING_PROMPT = (
 )
 
 _FINAL_PROMPT = (
+    "CAMERA GEOMETRY (very important):\n"
+    "The camera looks down and forward at an angle, so the bowls form an "
+    "ARC, not a straight horizontal line:\n"
+    "  - The LEFT bowl appears in the bottom-left area of the image.\n"
+    "  - The MIDDLE bowl is the one closest to the TOP of the image "
+    "(farther from the robot — perspective makes it appear higher up).\n"
+    "  - The RIGHT bowl appears in the bottom-right area of the image.\n"
+    "Do NOT identify the middle bowl as the one in the geometric center "
+    "of the image — pick the one that is HIGHEST in the frame.\n"
+    "\n"
+
     "Based on your reasoning above, write your FINAL ANSWER now.\n"
     "\n"
     "STRICT OUTPUT RULES: reply with EXACTLY ONE of these three sentences "
