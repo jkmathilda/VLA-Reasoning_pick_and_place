@@ -57,7 +57,9 @@ from typing import Any
 
 import draccus
 import grpc
+import numpy as np
 import torch
+from PIL import Image
 
 from lerobot.cameras.opencv.configuration_opencv import OpenCVCameraConfig  # noqa: F401
 from lerobot.cameras.realsense.configuration_realsense import RealSenseCameraConfig  # noqa: F401
@@ -91,9 +93,40 @@ from lerobot.async_inference.helpers import (
     visualize_action_queue_size,
 )
 
-# Make `scripts/` importable so we can pull in the local VLM helpers.
+# Make `scripts/` importable so we can pull in the VLM wrapper.
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from query_vlm import resolve_task_via_vlm  # noqa: E402
+from query_vlm import query_vlm  # noqa: E402
+
+
+# Joint positions (degrees) that put the wrist camera roughly top-down over
+# the workspace. Tune by teleoperating to a good overview pose.
+HOME_JOINTS: dict[str, float] = {
+    "shoulder_pan.pos":  0.0,
+    "shoulder_lift.pos": -35.0,
+    "elbow_flex.pos":    -8.0,
+    "wrist_flex.pos":    100.0,
+    "wrist_roll.pos":    0.0,
+    "gripper.pos":       0.0,
+}
+HOME_MOVE_TIME_S = 3.0
+HOME_FPS = 30
+
+
+def _move_to_home(robot, logger) -> None:
+    logger.info(f"[home] Moving to overview pose ({HOME_MOVE_TIME_S:.1f}s)...")
+    deadline = time.perf_counter() + HOME_MOVE_TIME_S
+    while time.perf_counter() < deadline:
+        robot.send_action(HOME_JOINTS)
+        time.sleep(1.0 / HOME_FPS)
+
+
+def _capture_overview_frame(robot, camera_name: str, logger) -> Image.Image:
+    logger.info(f"[home] Capturing overview frame from camera {camera_name!r}...")
+    obs = robot.get_observation()
+    frame = obs[camera_name]
+    if frame.dtype != np.uint8:
+        frame = (frame * 255).astype(np.uint8)
+    return Image.fromarray(frame)
 
 
 class RobotClient:
@@ -489,14 +522,14 @@ def async_client(cfg: RobotClientConfig):
         client.stop()
         return
 
-    client.logger.info("Resolving task via SmolVLM before starting control loop...")
+    client.logger.info("Homing robot and resolving task via SmolVLM before starting control loop...")
     camera_name = _pick_camera_name(client.robot)
     try:
-        resolved_task = resolve_task_via_vlm(
-            client.robot, camera_name=camera_name, task_spec=cfg.task, logger=client.logger
-        )
+        _move_to_home(client.robot, client.logger)
+        image = _capture_overview_frame(client.robot, camera_name, client.logger)
+        resolved_task = query_vlm(image, task_spec=cfg.task, logger=client.logger)
     except Exception:
-        client.logger.exception("VLM task resolution failed; shutting down client.")
+        client.logger.exception("Homing / VLM task resolution failed; shutting down client.")
         client.stop()
         raise
 
