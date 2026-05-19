@@ -17,7 +17,7 @@ from transformers import AutoModelForImageTextToText, AutoProcessor
 
 VLM_MODEL_ID = os.getenv("VLM_MODEL_ID", "HuggingFaceTB/SmolVLM2-2.2B-Instruct")
 # Sampling temperature for the free-form reasoning phase. 0.0 = greedy decoding.
-VLM_REASONING_TEMP = float(os.getenv("VLM_REASONING_TEMP", "0.8"))
+VLM_REASONING_TEMP = float(os.getenv("VLM_REASONING_TEMP", "0.5"))
 
 _REASONING_PROMPT = (
     "Look carefully at the image of the robot workspace. The scene contains:\n"
