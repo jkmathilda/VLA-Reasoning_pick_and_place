@@ -15,7 +15,7 @@ import torch
 from PIL import Image
 from transformers import AutoModelForImageTextToText, AutoProcessor
 
-VLM_MODEL_ID = os.getenv("VLM_MODEL_ID", "HuggingFaceTB/SmolVLM2-500M-Video-Instruct")
+VLM_MODEL_ID = os.getenv("VLM_MODEL_ID", "HuggingFaceTB/SmolVLM2-2.2B-Instruct")
 # Sampling temperature for the free-form reasoning phase. 0.0 = greedy decoding.
 VLM_REASONING_TEMP = float(os.getenv("VLM_REASONING_TEMP", "0.5"))
 
