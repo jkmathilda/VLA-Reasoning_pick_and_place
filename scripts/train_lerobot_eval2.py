@@ -34,8 +34,7 @@ import os
 import sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from task_paraphrase import paraphrase_task as _paraphrase_one
-
-
+ 
 IMAGE_KEY_PREFIX = "observation.images."
 
 # Per-sample random ranges. 1.0 = identity for brightness/contrast/saturation; 0.0 for hue.

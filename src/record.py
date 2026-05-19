@@ -31,7 +31,7 @@ from lerobot.utils.visualization_utils import init_rerun
 ROBOT_PORT = "/dev/tty.usbmodem5B141136531"
 LEADER_PORT = "/dev/tty.usbmodem5B141125311"
 
-REPO_ID = "ehalicki/ethz-rl-so101-may17-eval1"
+REPO_ID = "ehalicki/eth-rl-so101-combined"
 LOCAL_ROOT = Path("~/.cache/huggingface/lerobot").expanduser()
 FPS = 30
 EPISODE_TIME_S = 180
@@ -124,6 +124,7 @@ def main():
         dataset = LeRobotDataset.resume(
             repo_id=REPO_ID,
             root=local_dataset_path,
+            revision="main",
             image_writer_threads=4,
             streaming_encoding=True,
             vcodec="h264_videotoolbox",
@@ -135,13 +136,16 @@ def main():
             dataset = LeRobotDataset.resume(
                 repo_id=REPO_ID,
                 root=local_dataset_path,
+                revision="main",
+                force_cache_sync=True,
                 image_writer_threads=4,
                 streaming_encoding=True,
                 vcodec="h264_videotoolbox",
             )
             print(f"Resumed dataset from Hub with {dataset.meta.total_episodes} episodes")
-        except Exception:
-            print(f"No dataset on Hub either, creating new one")
+        except Exception as e:
+            print(f"Hub resume failed: {e!r}")
+            print(f"Creating new dataset")
             action_features = hw_to_dataset_features(robot.action_features, "action")
             obs_features = hw_to_dataset_features(robot.observation_features, "observation")
             dataset_features = {**action_features, **obs_features}
