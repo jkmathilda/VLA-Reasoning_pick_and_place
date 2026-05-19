@@ -296,7 +296,31 @@ _REASONING_PROMPT = (
     "wrong ones step by step with reasoning, and finally state your "
     "conclusion. Do NOT skip the bowl-identification step even if the "
     "instruction looks easy. Do NOT write the final canonical answer "
-    "sentence here — that comes in a follow-up message."
+    "sentence here — that comes in a follow-up message.\n"
+    "\n"
+    "CRITICAL — HOW TO END YOUR REASONING:\n"
+    "Your reasoning MUST end with a single line of the form:\n"
+    "  Conclusion: <position>.\n"
+    "where <position> is EXACTLY one of these three words: left, "
+    "middle, or right. It MUST be a POSITION word, NOT a color word.\n"
+    "\n"
+    "DO NOT end with a color. The following are WRONG and will cause "
+    "the system to fail:\n"
+    "  ✗ 'Conclusion: red.'   (red is a color, not a position)\n"
+    "  ✗ 'Conclusion: the red bowl.'\n"
+    "  ✗ 'Conclusion: place it in the green bowl.'\n"
+    "  ✗ 'The target is the blue bowl.'\n"
+    "\n"
+    "The following are CORRECT:\n"
+    "  ✓ 'Conclusion: left.'\n"
+    "  ✓ 'Conclusion: middle.'\n"
+    "  ✓ 'Conclusion: right.'\n"
+    "\n"
+    "If you have identified the target by color (e.g. 'the target color "
+    "is red'), you MUST then translate that color to a position using "
+    "your bowl map (e.g. 'red is at the middle position, so the target "
+    "position is middle') and end with 'Conclusion: middle.'. The very "
+    "last word before the period MUST be left, middle, or right."
 )
 
 _FINAL_PROMPT = (
@@ -311,16 +335,28 @@ _FINAL_PROMPT = (
     "of the image — pick the one that is HIGHEST in the frame.\n"
     "\n"
 
-    "Based on your reasoning above, write your FINAL ANSWER now.\n"
+    "Based on the reasoning above, write your FINAL ANSWER now.\n"
     "\n"
-    "STRICT OUTPUT RULES: reply with EXACTLY ONE of these three sentences "
-    "verbatim, and absolutely nothing else (no preamble, no explanation, "
-    "no extra punctuation):\n"
+    "Step 1: Look at the reasoning above and find the POSITION word "
+    "(left, middle, or right) that the reasoning concluded with — "
+    "typically stated in a sentence like 'the target is X' or "
+    "'Conclusion: X' near the end of the reasoning. This position word "
+    "is your answer.\n"
+    "\n"
+    "Step 2: Plug that position into the canonical sentence template:\n"
+    "  'Put the banana in the <POSITION> bowl.'\n"
+    "\n"
+    "Do NOT re-derive the answer from scratch. Do NOT re-identify the "
+    "bowl colors. Do NOT use color names (red/green/blue) in your "
+    "answer. The only valid position words are: left, middle, right. "
+    "Copy whichever position the reasoning concluded with.\n"
+    "\n"
+    "STRICT OUTPUT RULES: reply with EXACTLY ONE of these three "
+    "sentences verbatim, and absolutely nothing else (no preamble, no "
+    "explanation, no extra punctuation):\n"
     "  Put the banana in the left bowl.\n"
     "  Put the banana in the middle bowl.\n"
     "  Put the banana in the right bowl.\n"
-    "\n"
-    "The only words allowed in the position slot are: left, middle, or right."
 )
 
 class SceneVLM:
@@ -406,15 +442,17 @@ class SceneVLM:
         )
         print(f"[VLM] Phase 1 reasoning: {reasoning_text!r}", file=sys.stderr)
 
-        # Phase 2: build a single user turn that contains the original
-        # reasoning prompt, the model's own reasoning text appended in-line,
-        # and the final strict-output instruction.
+        # Phase 2: minimal prompt. We DO NOT re-include the worked examples
+        # from phase 1 — those end with "Conclusion: <position>" lines, and
+        # if the model sees them again it tends to mimic that format
+        # instead of the canonical sentence we want. We only need: the
+        # original task spec, the model's own reasoning, and the strict
+        # output instruction.
         combined_text = (
-            _REASONING_PROMPT.format(task_spec=task_spec)
-            + "\n\nYour reasoning so far:\n"
-            + reasoning_text
-            + "\n\n"
-            + _FINAL_PROMPT
+            f"The user's instruction was: {task_spec}\n\n"
+            "Your reasoning:\n"
+            f"{reasoning_text}\n\n"
+            f"{_FINAL_PROMPT}"
         )
         final_messages = [{
             "role": "user",
