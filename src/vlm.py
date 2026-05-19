@@ -16,6 +16,8 @@ from PIL import Image
 from transformers import AutoModelForImageTextToText, AutoProcessor
 
 VLM_MODEL_ID = os.getenv("VLM_MODEL_ID", "HuggingFaceTB/SmolVLM2-2.2B-Instruct")
+# Sampling temperature for the free-form reasoning phase. 0.0 = greedy decoding.
+VLM_REASONING_TEMP = float(os.getenv("VLM_REASONING_TEMP", "0.3"))
 
 _REASONING_PROMPT = (
     "Look carefully at the image of the robot workspace. The scene contains:\n"
@@ -190,8 +192,12 @@ class SceneVLM:
         print("[VLM] Ready.", file=sys.stderr)
 
     @torch.no_grad()
-    def _generate_messages(self, messages: list, max_new_tokens: int) -> str:
-        """Run generation on a free-form messages list (supports multi-turn)."""
+    def _generate_messages(self, messages: list, max_new_tokens: int, temperature: float = 0.0) -> str:
+        """Run generation on a free-form messages list (supports multi-turn).
+
+        temperature=0.0 → greedy decoding. temperature>0 → sampling with that
+        temperature (and top_p=0.95).
+        """
         inputs = self.processor.apply_chat_template(
             messages,
             add_generation_prompt=True,
@@ -206,8 +212,14 @@ class SceneVLM:
         }
         has_pixels = "pixel_values" in inputs
         px_shape = tuple(inputs["pixel_values"].shape) if has_pixels else None
-        print(f"[VLM] input keys={list(inputs.keys())} pixel_values_shape={px_shape}", file=sys.stderr)
-        outputs = self.model.generate(**inputs, max_new_tokens=max_new_tokens, do_sample=False)
+        print(f"[VLM] input keys={list(inputs.keys())} pixel_values_shape={px_shape} "
+              f"temperature={temperature}", file=sys.stderr)
+        gen_kwargs: dict = {"max_new_tokens": max_new_tokens}
+        if temperature > 0.0:
+            gen_kwargs.update(do_sample=True, temperature=temperature, top_p=0.95)
+        else:
+            gen_kwargs.update(do_sample=False)
+        outputs = self.model.generate(**inputs, **gen_kwargs)
         return self.processor.decode(
             outputs[0][inputs["input_ids"].shape[-1]:],
             skip_special_tokens=True,
@@ -237,7 +249,9 @@ class SceneVLM:
                 {"type": "text", "text": _REASONING_PROMPT.format(task_spec=task_spec)},
             ],
         }]
-        reasoning_text = self._generate_messages(reasoning_messages, max_new_tokens=2000)
+        reasoning_text = self._generate_messages(
+            reasoning_messages, max_new_tokens=2000, temperature=VLM_REASONING_TEMP,
+        )
         print(f"[VLM] Phase 1 reasoning: {reasoning_text!r}", file=sys.stderr)
 
         # Phase 2: build a single user turn that contains the original
