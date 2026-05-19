@@ -163,6 +163,17 @@ class SceneVLM:
         image.save("/tmp/vlm_input.png")
         print(f"[VLM] Input image saved to /tmp/vlm_input.png (size={image.size})", file=sys.stderr)
 
+        # Pass 0 (sanity check): ask the model to describe what it sees.
+        # If this comes back as generic / hallucinated, the image is not
+        # actually being attended to and perception/reasoning will fail.
+        describe_raw = self._generate(
+            image,
+            "Describe what you see in this image in one or two sentences. "
+            "What objects are present and what are their colors?",
+            max_new_tokens=120,
+        )
+        print(f"[VLM] Image description: {describe_raw!r}", file=sys.stderr)
+
         # Pass 1: perception — extract bowl layout.
         perception_raw = self._generate(image, _PERCEPTION_PROMPT, max_new_tokens=64)
         print(f"[VLM] Perception raw: {perception_raw!r}", file=sys.stderr)
