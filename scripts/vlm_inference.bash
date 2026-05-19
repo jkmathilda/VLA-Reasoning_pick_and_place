@@ -32,18 +32,18 @@ if [[ -z "$TASK" ]]; then
 fi
 
 echo ">>> Task spec: $TASK"
-echo ">>> Querying VLM to resolve bowl position..."
-RESOLVED_TASK=$(python "$PROJECT_ROOT/scripts/query_vlm.py" --task "$TASK")
-echo ">>> Resolved task: $RESOLVED_TASK"
+echo ">>> Launching robot client (VLM resolves the task after handshake)..."
 
-# run the robot client with the VLM-generated task.
-python -m lerobot.async_inference.robot_client \
+# The merged client connects to the server, moves the robot to the overview
+# pose, queries SmolVLM with --task as the high-level spec, and then runs
+# the normal async control loop with the resolved task.
+python "$PROJECT_ROOT/scripts/robot_client_with_vlm.py" \
     --server_address=$SERVER_ADDRESS \
     --robot.type=so101_follower \
     --robot.port=/dev/ttyACM0 \
     --robot.id=eth_rl_so101_follower \
     --robot.cameras="{ camera1: {type: opencv, index_or_path: 0, width: 640, height: 480, fps: 30}}" \
-    --task="$RESOLVED_TASK" \
+    --task="$TASK" \
     --policy_type=smolvla \
     --pretrained_name_or_path=$CHECKPOINT_PATH \
     --policy_device=cuda \

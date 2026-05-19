@@ -24,12 +24,6 @@ from typing import Any
 
 import torch
 
-# Task remapping. We collected two formats:
-#   Format 1: "Place the banana into the <color> bowl" (color in {red, green, blue},
-#             bowls are physically arranged Blue-Red-Green from left to right).
-#   Format 2: "<perm> : <Position>", produced by the VLM doing subtask recognition.
-# The policy is trained to be color-invariant, so both formats are normalized to
-# position-based paraphrases (left / middle / right). See scripts/task_paraphrase.py.
 import os
 import sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))

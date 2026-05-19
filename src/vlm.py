@@ -17,12 +17,54 @@ VLM_MODEL_ID = os.getenv("VLM_MODEL_ID", "HuggingFaceTB/SmolVLM-256M-Instruct")
 
 _PROMPT_TEMPLATE = (
     "Look at this robot workspace. "
-    "There are three bowls: one on the left, one in the middle, and one on the right. "
-    "The user's instruction is: \"{task_spec}\". "
-    "Based on this instruction and the scene, which bowl should the banana be placed in? Reason yourself."
-    # "Reply with exactly one word: left, middle, or right."
-    # "What is the color of the bowl on the left?"
-    "Reply with left, middle, or right with your reasoning."
+    "There are three bowls arranged in a row from the robot's perspective: "
+    "one on the left, one in the middle, and one on the right. "
+    "One bowl is blue, one is red, and one is green — the colors and positions vary. "
+    "A user gives an abstract task and you must reply with which bowl the banana goes in. "
+    "Reply with only one word: left, middle, or right.\n"
+    "\n"
+    "Here are some example questions and answers (the scene in each example is "
+    "described in parentheses; in the real question you must look at the image):\n"
+    "\n"
+    "Example 1 (scene: left=blue, middle=red, right=green):\n"
+    "  Q: Put the banana in the red bowl.\n"
+    "  A: middle\n"
+    "\n"
+    "Example 2 (scene: left=green, middle=blue, right=red):\n"
+    "  Q: Put the banana in the leftmost bowl.\n"
+    "  A: left\n"
+    "\n"
+    "Example 3 (scene: left=red, middle=green, right=blue):\n"
+    "  Q: Put the banana into the 2nd bowl from the left from the robot perspective.\n"
+    "  A: middle\n"
+    "\n"
+    "Example 4 (scene: left=blue, middle=red, right=green):\n"
+    "  Q: Put the banana into the bowl on the right of the red bowl from the robot perspective.\n"
+    "  A: right\n"
+    "\n"
+    "Example 5 (scene: left=green, middle=red, right=blue):\n"
+    "  Q: Put the banana into the bowl to the left of the red bowl.\n"
+    "  A: left\n"
+    "\n"
+    "Example 6 (scene: left=blue, middle=green, right=red):\n"
+    "  Q: Put the banana in the bowl that is not green and not blue.\n"
+    "  A: right\n"
+    "\n"
+    "Example 7 (scene: left=red, middle=blue, right=green):\n"
+    "  Q: Put the banana in the bowl that is neither red nor green.\n"
+    "  A: middle\n"
+    "\n"
+    "Example 8 (scene: left=green, middle=blue, right=red):\n"
+    "  Q: Put the banana in the rightmost bowl.\n"
+    "  A: right\n"
+    "\n"
+    "Example 9 (scene: left=red, middle=green, right=blue):\n"
+    "  Q: Put the banana in the bowl between the red bowl and the blue bowl.\n"
+    "  A: middle\n"
+    "\n"
+    "Now look at the actual scene in the image above and answer this question.\n"
+    "Q: {task_spec}\n"
+    "A:"
 )
 
 class SceneVLM:
@@ -71,14 +113,11 @@ class SceneVLM:
 
         position = next((w for w in ("left", "middle", "right") if w in answer), None)
         if position is None:
-            raise ValueError(f"VLM returned unexpected answer: {answer!r}")
+            print(f"VLM returned unexpected answer: {answer!r}, defaulting to middle")
+            position = "middle"
 
-        if position == 'left':
-            task = "Put the banana in the blue bowl."
-        elif position == 'middle':
-            task = "Put the banana in the red bowl."
-        else: # right
-            task = "Put the banana in the green bowl."
+        task = f"Put the banana in the {position} bowl."
+        
 
 
         import sys

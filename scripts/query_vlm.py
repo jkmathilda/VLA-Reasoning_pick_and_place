@@ -1,129 +1,67 @@
-#!/usr/bin/env python3
 """
-Capture one overview frame from the robot camera, query SmolVLM, and print
-the task string to stdout (nothing else). All other logging goes to stderr.
+VLM task-resolution helpers, intended to be imported by the async-inference
+robot client (see scripts/robot_client_with_vlm.py).
 
-Usage (standalone):
-    python scripts/query_vlm.py --task "Place the banana in the leftmost bowl"
-
-Usage (from bash — capture task into a variable):
-    TASK=$(python scripts/query_vlm.py --task "...")
+Given a connected lerobot Robot with a camera, this module can move the arm to
+a fixed overview pose, capture a frame, and ask SmolVLM to resolve a high-level
+task spec ("place the banana in the leftmost bowl") into the concrete task
+string the policy was trained with.
 """
-import argparse
+from pathlib import Path
 import sys
 import time
-from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
-
-import cv2
 import numpy as np
 from PIL import Image
 
-# Must match the camera used during recording.
-CAMERA_DEFAULT_W = 640
-CAMERA_DEFAULT_H = 480
+# Allow `from vlm import SceneVLM` (src/vlm.py).
+sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
 # Mirror of HOME_JOINTS in src/policy.py — keep in sync.
 HOME_JOINTS = {
     "shoulder_pan.pos": 0.0,
-    "shoulder_lift.pos": -50.0,
-    "elbow_flex.pos":    15.0,
-    "wrist_flex.pos":    80.0,
+    "shoulder_lift.pos": -35.0,
+    "elbow_flex.pos":    -8.0,
+    "wrist_flex.pos":    100.0,
     "wrist_roll.pos":    0.0,
     "gripper.pos":       0.0,
 }
 HOME_MOVE_TIME_S = 3.0
-FPS = 30
+HOME_FPS = 30
 
 
-def eprint(*args, **kwargs):
-    print(*args, file=sys.stderr, **kwargs)
+def move_to_home(robot, move_time_s: float = HOME_MOVE_TIME_S, fps: int = HOME_FPS) -> None:
+    deadline = time.perf_counter() + move_time_s
+    while time.perf_counter() < deadline:
+        robot.send_action(HOME_JOINTS)
+        time.sleep(1.0 / fps)
 
 
-def find_camera(target_w: int, target_h: int) -> int:
-    for i in range(10):
-        cap = cv2.VideoCapture(i)
-        if not cap.isOpened():
-            continue
-        w = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
-        h = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
-        cap.release()
-        if w == target_w and h == target_h:
-            return i
-    raise RuntimeError(f"No camera found with default resolution {target_w}x{target_h}")
+def capture_overview_frame(robot, camera_name: str) -> Image.Image:
+    obs = robot.get_observation()
+    frame = obs[camera_name]
+    if frame.dtype != np.uint8:
+        frame = (frame * 255).astype(np.uint8)
+    return Image.fromarray(frame)
 
 
-def capture_frame(idx: int) -> Image.Image:
-    cap = cv2.VideoCapture(idx)
-    for _ in range(5):  # warm up — discard stale frames
-        cap.read()
-    ret, frame = cap.read()
-    cap.release()
-    if not ret:
-        raise RuntimeError("Failed to read frame from camera")
-    return Image.fromarray(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB))
+def resolve_task_via_vlm(robot, camera_name: str, task_spec: str, logger=None) -> str:
+    """Move to home, snap an overview frame, and resolve task_spec via SmolVLM.
 
-
-def move_to_home_and_capture() -> Image.Image:
-    """Connect robot, move to overview position, capture frame, disconnect."""
-    from lerobot.cameras.opencv.configuration_opencv import OpenCVCameraConfig
-    from lerobot.robots.so_follower import SO101Follower
-    from lerobot.robots.so_follower.config_so_follower import SO101FollowerConfig
-
-    ROBOT_PORT = "/dev/ttyACM0"
-    CAMERA_NAME = "camera1"
-
-    cam_idx = find_camera(CAMERA_DEFAULT_W, CAMERA_DEFAULT_H)
-    robot = SO101Follower(SO101FollowerConfig(
-        port=ROBOT_PORT,
-        id="eth_rl_so101_follower",
-        cameras={
-            CAMERA_NAME: OpenCVCameraConfig(
-                index_or_path=cam_idx, width=640, height=480, fps=FPS,
-            )
-        },
-    ))
-    robot.connect()
-    try:
-        eprint("[query_vlm] Moving to home position...")
-        deadline = time.perf_counter() + HOME_MOVE_TIME_S
-        while time.perf_counter() < deadline:
-            robot.send_action(HOME_JOINTS)
-            time.sleep(1.0 / FPS)
-
-        eprint("[query_vlm] Capturing overview frame...")
-        obs = robot.get_observation()
-        frame = obs[CAMERA_NAME]
-        if frame.dtype != np.uint8:
-            frame = (frame * 255).astype(np.uint8)
-        return Image.fromarray(frame)
-    finally:
-        robot.disconnect()
-
-
-def main():
+    Returns the concrete task string to feed the policy.
+    """
     from vlm import SceneVLM
 
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--task", required=True, help="High-level task specification to resolve into a bowl position.")
-    parser.add_argument("--no-home", action="store_true", help="Skip moving robot to home position before capture.")
-    args = parser.parse_args()
+    log = logger.info if logger is not None else print
 
-    if not args.no_home:
-        image = move_to_home_and_capture()
-    else:
-        eprint("[query_vlm] Skipping home move — capturing directly from camera...")
-        idx = find_camera(CAMERA_DEFAULT_W, CAMERA_DEFAULT_H)
-        image = capture_frame(idx)
+    log(f"[vlm] Moving to home position ({HOME_MOVE_TIME_S:.1f}s)...")
+    move_to_home(robot)
 
-    eprint(f"[query_vlm] Querying VLM with task spec: {args.task!r}")
+    log("[vlm] Capturing overview frame...")
+    image = capture_overview_frame(robot, camera_name)
+
+    log(f"[vlm] Querying SmolVLM with task spec: {task_spec!r}")
     vlm = SceneVLM()
-    task = vlm.query(image, task_spec=args.task)
-
-    # Only the task goes to stdout — everything else used stderr.
-    print(task)
-
-
-if __name__ == "__main__":
-    main()
+    task = vlm.query(image, task_spec=task_spec)
+    log(f"[vlm] Resolved task: {task!r}")
+    return task
