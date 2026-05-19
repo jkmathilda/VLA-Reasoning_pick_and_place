@@ -17,7 +17,7 @@ from transformers import AutoModelForImageTextToText, AutoProcessor
 
 VLM_MODEL_ID = os.getenv("VLM_MODEL_ID", "HuggingFaceTB/SmolVLM2-2.2B-Instruct")
 # Sampling temperature for the free-form reasoning phase. 0.0 = greedy decoding.
-VLM_REASONING_TEMP = float(os.getenv("VLM_REASONING_TEMP", "0.5"))
+VLM_REASONING_TEMP = float(os.getenv("VLM_REASONING_TEMP", "0.3"))
 
 _REASONING_PROMPT = (
     "Look carefully at the image of the robot workspace. The scene contains:\n"
@@ -154,17 +154,10 @@ _REASONING_PROMPT = (
     "interpret the instruction, then conclude which position (left, middle, "
     "or right) is the target.\n"
     "\n"
-    "IMPORTANT — write a LONG, DETAILED reasoning paragraph (at least "
-    "150 words, ideally more). Do not be concise. Walk through every "
-    "step verbosely: describe the scene in detail, name each bowl's "
-    "color one at a time and justify the call (e.g. 'the bowl on the "
-    "bottom-left of the frame appears red because...'), restate the "
-    "instruction in your own words, enumerate every candidate bowl, "
-    "explicitly rule out the wrong ones, and finally state your "
-    "conclusion. The longer and more careful your reasoning, the better "
-    "your final answer will be. This is your scratch space — use it "
-    "generously. You will write the short final one-sentence answer in a "
-    "follow-up message; do NOT write the final answer here."
+    "Keep the reasoning SHORT — a few sentences, similar in length to "
+    "the worked examples above. State the bowl colors, interpret the "
+    "instruction, and conclude. Do NOT write the final canonical answer "
+    "sentence here — that comes in a follow-up message."
 )
 
 _FINAL_PROMPT = (
@@ -270,7 +263,7 @@ class SceneVLM:
             ],
         }]
         reasoning_text = self._generate_messages(
-            reasoning_messages, max_new_tokens=2000, temperature=VLM_REASONING_TEMP,
+            reasoning_messages, max_new_tokens=250, temperature=VLM_REASONING_TEMP,
         )
         print(f"[VLM] Phase 1 reasoning: {reasoning_text!r}", file=sys.stderr)
 
