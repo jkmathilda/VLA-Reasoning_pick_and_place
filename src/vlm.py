@@ -1,4 +1,4 @@
-"""
+""
 Scene understanding via SmolVLM-256M-Instruct.
 
 Captures a top-down workspace image and returns a single-sentence
@@ -22,6 +22,13 @@ _PROMPT_TEMPLATE = (
     "One bowl is blue, one is red, and one is green — the colors and positions vary. "
     "A user gives an abstract task and you must reply with which bowl the banana goes in. "
     "Reply with only one word: left, middle, or right.\n"
+    "\n"
+    "Important: the camera view may be partial — sometimes one of the three bowls "
+    "is cut off at the edge of the frame or only barely visible. Since there are "
+    "always exactly three bowls (one red, one green, one blue), you can infer the "
+    "color of any bowl that is not fully visible: it must be whichever of "
+    "{{red, green, blue}} is not present among the bowls you can clearly see. "
+    "Use this deduction when reasoning about color-based instructions.\n"
     "\n"
     "Here are some example questions and answers (the scene in each example is "
     "described in parentheses; in the real question you must look at the image):\n"
