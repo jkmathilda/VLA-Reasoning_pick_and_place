@@ -1,9 +1,10 @@
-""
+"""
 Scene understanding via SmolVLM-256M-Instruct.
 
 Captures a top-down workspace image and returns a single-sentence
 pick-and-place task instruction for the robot.
 """
+
 from __future__ import annotations
 
 import os
