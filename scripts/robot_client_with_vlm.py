@@ -130,6 +130,43 @@ def _capture_overview_frame(robot, camera_name: str, logger) -> Image.Image:
     return Image.fromarray(frame)
 
 
+def _format_params(n: int) -> str:
+    if n >= 1_000_000_000:
+        return f"{n/1_000_000_000:.2f}B ({n:,})"
+    if n >= 1_000_000:
+        return f"{n/1_000_000:.1f}M ({n:,})"
+    return f"{n:,}"
+
+
+def _count_smolvla_params(checkpoint_or_hub_id: str) -> int | None:
+    """Count parameters in the SmolVLA checkpoint by reading safetensors headers
+    (no full model load). Works for a local checkpoint dir; returns None on failure."""
+    try:
+        from safetensors import safe_open
+        p = Path(checkpoint_or_hub_id)
+        if not p.exists() or not p.is_dir():
+            return None
+        total = 0
+        shards = sorted(p.glob("**/*.safetensors"))
+        if not shards:
+            return None
+        for shard in shards:
+            with safe_open(str(shard), framework="pt") as f:
+                for key in f.keys():
+                    shape = f.get_slice(key).get_shape()
+                    n = 1
+                    for d in shape:
+                        n *= int(d)
+                    total += n
+        return total
+    except Exception:
+        return None
+
+
+def _count_smolvlm_params(vlm) -> int:
+    return sum(p.numel() for p in vlm.model.parameters())
+
+
 class RobotClient:
     prefix = "robot_client"
     logger = get_logger(prefix)
@@ -528,9 +565,21 @@ def async_client(cfg: RobotClientConfig):
         client.stop()
         return
 
+    # Parameter count: SmolVLA policy (always present).
+    smolvla_params = _count_smolvla_params(cfg.pretrained_name_or_path)
+    if smolvla_params is not None:
+        client.logger.info(f"[params] SmolVLA policy: {_format_params(smolvla_params)}")
+    else:
+        client.logger.info(f"[params] SmolVLA policy: <could not count from "
+                           f"{cfg.pretrained_name_or_path!r}>")
+
     camera_name = _pick_camera_name(client.robot)
     if skip_vlm:
         client.logger.info("SKIP_VLM set — homing robot, skipping VLM load/query.")
+        client.logger.info(
+            "[params] Total model params: "
+            f"{_format_params(smolvla_params) if smolvla_params is not None else '?'}"
+        )
         try:
             _move_to_home(client.robot, client.logger)
         except Exception:
@@ -547,6 +596,14 @@ def async_client(cfg: RobotClientConfig):
             client.logger.exception("VLM load failed; shutting down client.")
             client.stop()
             raise
+
+        smolvlm_params = _count_smolvlm_params(vlm)
+        client.logger.info(f"[params] SmolVLM: {_format_params(smolvlm_params)}")
+        if smolvla_params is not None:
+            total = smolvla_params + smolvlm_params
+            client.logger.info(
+                f"[params] Total (SmolVLA + SmolVLM): {_format_params(total)}"
+            )
 
         client.logger.info("VLM ready — homing robot and resolving task...")
         try:
