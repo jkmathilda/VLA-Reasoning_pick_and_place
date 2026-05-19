@@ -95,7 +95,7 @@ from lerobot.async_inference.helpers import (
 
 # Make `scripts/` importable so we can pull in the VLM wrapper.
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from query_vlm import query_vlm  # noqa: E402
+from query_vlm import load_vlm, query_vlm  # noqa: E402
 
 
 # Joint positions (degrees) that put the wrist camera roughly top-down over
@@ -522,12 +522,21 @@ def async_client(cfg: RobotClientConfig):
         client.stop()
         return
 
-    client.logger.info("Homing robot and resolving task via SmolVLM before starting control loop...")
+    # Load the VLM BEFORE homing so model load doesn't count against eval
+    # time (timing begins when the arm starts moving).
     camera_name = _pick_camera_name(client.robot)
+    try:
+        vlm = load_vlm(client.logger)
+    except Exception:
+        client.logger.exception("VLM load failed; shutting down client.")
+        client.stop()
+        raise
+
+    client.logger.info("VLM ready — homing robot and resolving task...")
     try:
         _move_to_home(client.robot, client.logger)
         image = _capture_overview_frame(client.robot, camera_name, client.logger)
-        resolved_task = query_vlm(image, task_spec=cfg.task, logger=client.logger)
+        resolved_task = query_vlm(vlm, image, task_spec=cfg.task, logger=client.logger)
     except Exception:
         client.logger.exception("Homing / VLM task resolution failed; shutting down client.")
         client.stop()

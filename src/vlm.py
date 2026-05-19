@@ -42,58 +42,79 @@ _PERCEPTION_PROMPT = (
     "left=<color>, middle=<color>, right=<color>"
 )
 
-_REASONING_PROMPT = (
+_COMBINED_PROMPT = (
     "You are resolving a pick-and-place instruction into one of three target "
     "positions: left, middle, or right.\n"
     "\n"
-    "The bowl layout from the robot's perspective is:\n"
-    "  left = {left_color}\n"
-    "  middle = {middle_color}\n"
-    "  right = {right_color}\n"
+    "SCENE:\n"
+    "The image shows a robot workspace containing:\n"
+    "  - Exactly THREE bowls (one RED, one GREEN, one BLUE — one of each).\n"
+    "  - A yellow banana. The banana is NOT a bowl — ignore it for color "
+    "identification.\n"
     "\n"
-    "Reply with EXACTLY one word: left, middle, or right. Nothing else.\n"
+    "CAMERA GEOMETRY (very important):\n"
+    "The camera looks down and forward at an angle, so the bowls form an "
+    "ARC, not a straight horizontal line:\n"
+    "  - The LEFT bowl appears in the bottom-left area of the image.\n"
+    "  - The MIDDLE bowl is the one closest to the TOP of the image "
+    "(farther from the robot — perspective makes it appear higher up), "
+    "horizontally centered.\n"
+    "  - The RIGHT bowl appears in the bottom-right area of the image.\n"
+    "Do NOT identify the middle bowl as the one in the geometric center "
+    "of the image — pick the one that is highest in the frame.\n"
     "\n"
-    "Examples (the layout shown applies only to that example):\n"
+    "INSTRUCTIONS:\n"
+    "Step 1: Identify the color of each bowl in the image (left, middle, right).\n"
+    "Step 2: Read the user's task and figure out which bowl it refers to.\n"
+    "Step 3: Output the bowl POSITION (left, middle, or right).\n"
     "\n"
-    "Layout: left=blue, middle=red, right=green\n"
+    "Your final output must be EXACTLY one of these three sentences (and "
+    "nothing else after it):\n"
+    "  Put the banana in the left bowl.\n"
+    "  Put the banana in the middle bowl.\n"
+    "  Put the banana in the right bowl.\n"
+    "\n"
+    "Examples (each example has its own scene — use them to learn the "
+    "REASONING and OUTPUT FORMAT; the actual bowl layout comes from the image):\n"
+    "\n"
+    "Example A:\n"
     "Task: Put the banana in the red bowl.\n"
-    "Answer: middle\n"
+    "Put the banana in the middle bowl.\n"
     "\n"
-    "Layout: left=green, middle=blue, right=red\n"
+    "Example B:\n"
     "Task: Put the banana in the leftmost bowl.\n"
-    "Answer: left\n"
+    "Put the banana in the left bowl.\n"
     "\n"
-    "Layout: left=red, middle=green, right=blue\n"
+    "Example C:\n"
     "Task: Put the banana in the 2nd bowl from the left.\n"
-    "Answer: middle\n"
+    "Put the banana in the middle bowl.\n"
     "\n"
-    "Layout: left=blue, middle=red, right=green\n"
+    "Example D:\n"
     "Task: Put the banana in the bowl on the right of the red bowl.\n"
-    "Answer: right\n"
+    "Put the banana in the right bowl.\n"
     "\n"
-    "Layout: left=green, middle=red, right=blue\n"
+    "Example E:\n"
     "Task: Put the banana in the bowl to the left of the red bowl.\n"
-    "Answer: left\n"
+    "Put the banana in the left bowl.\n"
     "\n"
-    "Layout: left=blue, middle=green, right=red\n"
+    "Example F:\n"
     "Task: Put the banana in the bowl that is not green and not blue.\n"
-    "Answer: right\n"
+    "Put the banana in the right bowl.\n"
     "\n"
-    "Layout: left=red, middle=blue, right=green\n"
+    "Example G:\n"
     "Task: Put the banana in the bowl that is neither red nor green.\n"
-    "Answer: middle\n"
+    "Put the banana in the middle bowl.\n"
     "\n"
-    "Layout: left=green, middle=blue, right=red\n"
+    "Example H:\n"
     "Task: Put the banana in the rightmost bowl.\n"
-    "Answer: right\n"
+    "Put the banana in the right bowl.\n"
     "\n"
-    "Layout: left=red, middle=green, right=blue\n"
+    "Example I:\n"
     "Task: Put the banana in the bowl between the red bowl and the blue bowl.\n"
-    "Answer: middle\n"
+    "Put the banana in the middle bowl.\n"
     "\n"
-    "Layout: left={left_color}, middle={middle_color}, right={right_color}\n"
+    "Now look at the actual image above and answer.\n"
     "Task: {task_spec}\n"
-    "Answer:"
 )
 
 class SceneVLM:
@@ -149,65 +170,17 @@ class SceneVLM:
             skip_special_tokens=True,
         ).strip().lower()
 
-    def _perceive_layout(self, image: Image.Image) -> dict[str, str]:
-        """Single VLM call to identify all three bowl colors at once."""
-        import re
-        raw = self._generate(image, _PERCEPTION_PROMPT, max_new_tokens=64)
-        print(f"[VLM] Perception raw: {raw!r}", file=sys.stderr)
-
-        colors = ("red", "green", "blue")
-        positions = ("left", "middle", "right")
-        layout: dict[str, str] = {}
-        for pos in positions:
-            m = re.search(rf"{pos}\s*[:=]\s*(red|green|blue)", raw)
-            if m:
-                layout[pos] = m.group(1)
-
-        # If anything is missing or duplicated, fill remaining positions with
-        # remaining colors in a deterministic order.
-        used_colors = set(layout.values())
-        remaining_colors = [c for c in colors if c not in used_colors]
-        remaining_positions = [p for p in positions if p not in layout]
-        for p, c in zip(remaining_positions, remaining_colors):
-            layout[p] = c
-        return layout
-
     def query(self, image: Image.Image, task_spec: str) -> str:
         image.save("/tmp/vlm_input.png")
         print(f"[VLM] Input image saved to /tmp/vlm_input.png (size={image.size})", file=sys.stderr)
 
-        # Pass 0 (sanity check): ask the model to describe what it sees.
-        # If this comes back as generic / hallucinated, the image is not
-        # actually being attended to and perception/reasoning will fail.
-        describe_raw = self._generate(
-            image,
-            "Describe what you see in this image in one or two sentences. "
-            "What objects are present and what are their colors?",
-            max_new_tokens=120,
-        )
-        print(f"[VLM] Image description: {describe_raw!r}", file=sys.stderr)
+        prompt = _COMBINED_PROMPT.format(task_spec=task_spec)
+        raw = self._generate(image, prompt, max_new_tokens=32)
+        print(f"[VLM] Raw output: {raw!r}", file=sys.stderr)
 
-        # Pass 1: perception — ask the VLM where each colored bowl is (3 queries).
-        layout = self._perceive_layout(image)
-        print(f"[VLM] Parsed layout: {layout}", file=sys.stderr)
-
-        # Pass 2: reasoning — given the layout, resolve task_spec to a position.
-        reasoning_prompt = _REASONING_PROMPT.format(
-            left_color=layout["left"],
-            middle_color=layout["middle"],
-            right_color=layout["right"],
-            task_spec=task_spec,
-        )
-        reasoning_raw = self._generate(image, reasoning_prompt, max_new_tokens=8)
-        print(f"[VLM] Reasoning raw: {reasoning_raw!r}", file=sys.stderr)
-
-        position = next((w for w in ("left", "middle", "right") if w in reasoning_raw), None)
-        if position is None:
-            print(f"[VLM] Unexpected reasoning answer: {reasoning_raw!r}, defaulting to middle",
-                  file=sys.stderr)
-            position = "middle"
-
-        task = f"Put the banana in the {position} bowl."
-        print(f"[VLM] layout={layout} | task_spec={task_spec!r} → position={position!r} → task={task!r}",
-              file=sys.stderr)
+        # The VLM is asked to emit one of the canonical training-time task
+        # sentences. Take the last non-empty line and return it directly.
+        task = next((ln.strip() for ln in reversed(raw.splitlines()) if ln.strip()),
+                    "Put the banana in the middle bowl.")
+        print(f"[VLM] task_spec={task_spec!r} → task={task!r}", file=sys.stderr)
         return task
