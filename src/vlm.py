@@ -16,63 +16,70 @@ from transformers import AutoModelForImageTextToText, AutoProcessor
 
 VLM_MODEL_ID = os.getenv("VLM_MODEL_ID", "HuggingFaceTB/SmolVLM-256M-Instruct")
 
-_PROMPT_TEMPLATE = (
-    "Look at this robot workspace. "
-    "There are three bowls arranged in a row from the robot's perspective: "
-    "one on the left, one in the middle, and one on the right. "
-    "One bowl is blue, one is red, and one is green — the colors and positions vary. "
-    "A user gives an abstract task and you must reply with which bowl the banana goes in. "
-    "Reply with only one word: left, middle, or right.\n"
+_PERCEPTION_PROMPT = (
+    "Look at this robot workspace. There are three bowls arranged in a row "
+    "from the robot's perspective (left, middle, right). One is red, one is "
+    "green, one is blue. Some bowls may be partially cut off at the edge of "
+    "the image — there are always exactly three bowls, so the missing color "
+    "is whichever of {red, green, blue} you cannot see.\n"
     "\n"
-    "Important: the camera view may be partial — sometimes one of the three bowls "
-    "is cut off at the edge of the frame or only barely visible. Since there are "
-    "always exactly three bowls (one red, one green, one blue), you can infer the "
-    "color of any bowl that is not fully visible: it must be whichever of "
-    "{{red, green, blue}} is not present among the bowls you can clearly see. "
-    "Use this deduction when reasoning about color-based instructions.\n"
+    "Identify the color of each bowl. Reply on ONE line in this exact format "
+    "(lowercase, no extra words):\n"
+    "left=<color>, middle=<color>, right=<color>"
+)
+
+_REASONING_PROMPT = (
+    "You are resolving a pick-and-place instruction into one of three target "
+    "positions: left, middle, or right.\n"
     "\n"
-    "Here are some example questions and answers (the scene in each example is "
-    "described in parentheses; in the real question you must look at the image):\n"
+    "The bowl layout from the robot's perspective is:\n"
+    "  left = {left_color}\n"
+    "  middle = {middle_color}\n"
+    "  right = {right_color}\n"
     "\n"
-    "Example 1 (scene: left=blue, middle=red, right=green):\n"
-    "  Q: Put the banana in the red bowl.\n"
-    "  A: middle\n"
+    "Reply with EXACTLY one word: left, middle, or right. Nothing else.\n"
     "\n"
-    "Example 2 (scene: left=green, middle=blue, right=red):\n"
-    "  Q: Put the banana in the leftmost bowl.\n"
-    "  A: left\n"
+    "Examples (the layout shown applies only to that example):\n"
     "\n"
-    "Example 3 (scene: left=red, middle=green, right=blue):\n"
-    "  Q: Put the banana into the 2nd bowl from the left from the robot perspective.\n"
-    "  A: middle\n"
+    "Layout: left=blue, middle=red, right=green\n"
+    "Task: Put the banana in the red bowl.\n"
+    "Answer: middle\n"
     "\n"
-    "Example 4 (scene: left=blue, middle=red, right=green):\n"
-    "  Q: Put the banana into the bowl on the right of the red bowl from the robot perspective.\n"
-    "  A: right\n"
+    "Layout: left=green, middle=blue, right=red\n"
+    "Task: Put the banana in the leftmost bowl.\n"
+    "Answer: left\n"
     "\n"
-    "Example 5 (scene: left=green, middle=red, right=blue):\n"
-    "  Q: Put the banana into the bowl to the left of the red bowl.\n"
-    "  A: left\n"
+    "Layout: left=red, middle=green, right=blue\n"
+    "Task: Put the banana in the 2nd bowl from the left.\n"
+    "Answer: middle\n"
     "\n"
-    "Example 6 (scene: left=blue, middle=green, right=red):\n"
-    "  Q: Put the banana in the bowl that is not green and not blue.\n"
-    "  A: right\n"
+    "Layout: left=blue, middle=red, right=green\n"
+    "Task: Put the banana in the bowl on the right of the red bowl.\n"
+    "Answer: right\n"
     "\n"
-    "Example 7 (scene: left=red, middle=blue, right=green):\n"
-    "  Q: Put the banana in the bowl that is neither red nor green.\n"
-    "  A: middle\n"
+    "Layout: left=green, middle=red, right=blue\n"
+    "Task: Put the banana in the bowl to the left of the red bowl.\n"
+    "Answer: left\n"
     "\n"
-    "Example 8 (scene: left=green, middle=blue, right=red):\n"
-    "  Q: Put the banana in the rightmost bowl.\n"
-    "  A: right\n"
+    "Layout: left=blue, middle=green, right=red\n"
+    "Task: Put the banana in the bowl that is not green and not blue.\n"
+    "Answer: right\n"
     "\n"
-    "Example 9 (scene: left=red, middle=green, right=blue):\n"
-    "  Q: Put the banana in the bowl between the red bowl and the blue bowl.\n"
-    "  A: middle\n"
+    "Layout: left=red, middle=blue, right=green\n"
+    "Task: Put the banana in the bowl that is neither red nor green.\n"
+    "Answer: middle\n"
     "\n"
-    "Now look at the actual scene in the image above and answer this question.\n"
-    "Q: {task_spec}\n"
-    "A:"
+    "Layout: left=green, middle=blue, right=red\n"
+    "Task: Put the banana in the rightmost bowl.\n"
+    "Answer: right\n"
+    "\n"
+    "Layout: left=red, middle=green, right=blue\n"
+    "Task: Put the banana in the bowl between the red bowl and the blue bowl.\n"
+    "Answer: middle\n"
+    "\n"
+    "Layout: left={left_color}, middle={middle_color}, right={right_color}\n"
+    "Task: {task_spec}\n"
+    "Answer:"
 )
 
 class SceneVLM:
@@ -96,36 +103,69 @@ class SceneVLM:
         print("[VLM] Ready.", file=sys.stderr)
 
     @torch.no_grad()
-    def query(self, image: Image.Image, task_spec: str) -> str:
-        prompt = _PROMPT_TEMPLATE.format(task_spec=task_spec)
-        image.save("/tmp/vlm_input.png"); print(f"[VLM] Input image saved to /tmp/vlm_input.png (size={image.size})", file=sys.stderr)
-        print(f"TEST1: {prompt}")
-        messages = [
-            {
-                "role": "user",
-                "content": [
-                    {"type": "image"},
-                    {"type": "text", "text": prompt},
-                ],
-            }
-        ]
+    def _generate(self, image: Image.Image, prompt: str, max_new_tokens: int) -> str:
+        messages = [{
+            "role": "user",
+            "content": [{"type": "image"}, {"type": "text", "text": prompt}],
+        }]
         text = self.processor.apply_chat_template(messages, add_generation_prompt=True)
         inputs = self.processor(text=text, images=[image], return_tensors="pt").to(self.device)
-
-        outputs = self.model.generate(**inputs, max_new_tokens=5000, do_sample=False)
-        answer = self.processor.decode(
+        outputs = self.model.generate(**inputs, max_new_tokens=max_new_tokens, do_sample=False)
+        return self.processor.decode(
             outputs[0][inputs["input_ids"].shape[-1]:],
             skip_special_tokens=True,
         ).strip().lower()
 
-        print(f"TEST2: {answer}")
+    def _parse_layout(self, raw: str) -> dict[str, str]:
+        """Extract {left,middle,right} -> color from a free-form VLM response."""
+        import re
+        colors = ("red", "green", "blue")
+        layout: dict[str, str] = {}
+        for pos in ("left", "middle", "right"):
+            m = re.search(rf"{pos}\s*[:=]\s*(red|green|blue)", raw)
+            if m:
+                layout[pos] = m.group(1)
+        # Fill in the missing slot if exactly one is unknown.
+        missing_pos = [p for p in ("left", "middle", "right") if p not in layout]
+        if len(missing_pos) == 1:
+            used = set(layout.values())
+            remaining = [c for c in colors if c not in used]
+            if len(remaining) == 1:
+                layout[missing_pos[0]] = remaining[0]
+        # Final fallback for anything still missing.
+        for p in ("left", "middle", "right"):
+            if p not in layout:
+                used = set(layout.values())
+                layout[p] = next((c for c in colors if c not in used), "red")
+        return layout
 
-        position = next((w for w in ("left", "middle", "right") if w in answer), None)
+    def query(self, image: Image.Image, task_spec: str) -> str:
+        image.save("/tmp/vlm_input.png")
+        print(f"[VLM] Input image saved to /tmp/vlm_input.png (size={image.size})", file=sys.stderr)
+
+        # Pass 1: perception — extract bowl layout.
+        perception_raw = self._generate(image, _PERCEPTION_PROMPT, max_new_tokens=64)
+        print(f"[VLM] Perception raw: {perception_raw!r}", file=sys.stderr)
+        layout = self._parse_layout(perception_raw)
+        print(f"[VLM] Parsed layout: {layout}", file=sys.stderr)
+
+        # Pass 2: reasoning — given the layout, resolve task_spec to a position.
+        reasoning_prompt = _REASONING_PROMPT.format(
+            left_color=layout["left"],
+            middle_color=layout["middle"],
+            right_color=layout["right"],
+            task_spec=task_spec,
+        )
+        reasoning_raw = self._generate(image, reasoning_prompt, max_new_tokens=8)
+        print(f"[VLM] Reasoning raw: {reasoning_raw!r}", file=sys.stderr)
+
+        position = next((w for w in ("left", "middle", "right") if w in reasoning_raw), None)
         if position is None:
-            print(f"VLM returned unexpected answer: {answer!r}, defaulting to middle")
+            print(f"[VLM] Unexpected reasoning answer: {reasoning_raw!r}, defaulting to middle",
+                  file=sys.stderr)
             position = "middle"
 
         task = f"Put the banana in the {position} bowl."
-        
-        print(f"[VLM] Position: {position!r} → task: {task!r}", file=sys.stderr)
+        print(f"[VLM] layout={layout} | task_spec={task_spec!r} → position={position!r} → task={task!r}",
+              file=sys.stderr)
         return task

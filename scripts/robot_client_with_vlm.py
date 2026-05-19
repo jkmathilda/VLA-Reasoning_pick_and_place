@@ -108,7 +108,7 @@ HOME_JOINTS: dict[str, float] = {
     "wrist_roll.pos":    0.0,
     "gripper.pos":       0.0,
 }
-HOME_MOVE_TIME_S = 3.0
+HOME_MOVE_TIME_S = 1.0
 HOME_FPS = 30
 
 
