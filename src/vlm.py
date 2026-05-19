@@ -97,6 +97,7 @@ class SceneVLM:
     @torch.no_grad()
     def query(self, image: Image.Image, task_spec: str) -> str:
         prompt = _PROMPT_TEMPLATE.format(task_spec=task_spec)
+        image.save("/tmp/vlm_input.png"); print(f"[VLM] Input image saved to /tmp/vlm_input.png (size={image.size})", file=sys.stderr)
         print(f"TEST1: {prompt}")
         messages = [
             {
