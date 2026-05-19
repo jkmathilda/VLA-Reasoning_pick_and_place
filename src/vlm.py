@@ -181,7 +181,12 @@ class SceneVLM:
         px_shape = tuple(inputs["pixel_values"].shape) if has_pixels else None
         print(f"[VLM] input keys={list(inputs.keys())} pixel_values_shape={px_shape} "
               f"temperature={temperature}", file=sys.stderr)
-        gen_kwargs: dict = {"max_new_tokens": max_new_tokens}
+        gen_kwargs: dict = {
+            "max_new_tokens": max_new_tokens,
+            # Discourage degenerate "the bowl is blue. the bowl is blue. …" loops.
+            # 1.0 = no penalty; >1 penalizes already-seen tokens.
+            "repetition_penalty": 1.15,
+        }
         if temperature > 0.0:
             gen_kwargs.update(do_sample=True, temperature=temperature, top_p=0.95)
         else:
@@ -217,7 +222,7 @@ class SceneVLM:
             ],
         }]
         reasoning_text = self._generate_messages(
-            reasoning_messages, max_new_tokens=2000, temperature=VLM_REASONING_TEMP,
+            reasoning_messages, max_new_tokens=400, temperature=VLM_REASONING_TEMP,
         )
         print(f"[VLM] Phase 1 reasoning: {reasoning_text!r}", file=sys.stderr)
 
