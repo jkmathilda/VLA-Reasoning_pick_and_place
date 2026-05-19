@@ -1,5 +1,6 @@
 """
-Scene understanding via SmolVLM-256M-Instruct.
+Scene understanding via SmolVLM2-500M-Video-Instruct (works fine on still
+images too, and is markedly stronger at perception than SmolVLM v1).
 
 Captures a top-down workspace image and returns a single-sentence
 pick-and-place task instruction for the robot.
@@ -14,7 +15,7 @@ import torch
 from PIL import Image
 from transformers import AutoModelForImageTextToText, AutoProcessor
 
-VLM_MODEL_ID = os.getenv("VLM_MODEL_ID", "HuggingFaceTB/SmolVLM-256M-Instruct")
+VLM_MODEL_ID = os.getenv("VLM_MODEL_ID", "HuggingFaceTB/SmolVLM2-500M-Video-Instruct")
 
 _PERCEPTION_PROMPT = (
     "Look at this robot workspace. There are three bowls arranged in a row "
