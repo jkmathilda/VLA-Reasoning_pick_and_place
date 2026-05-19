@@ -127,8 +127,5 @@ class SceneVLM:
 
         task = f"Put the banana in the {position} bowl."
         
-
-
-        import sys
         print(f"[VLM] Position: {position!r} → task: {task!r}", file=sys.stderr)
         return task
