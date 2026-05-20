@@ -1,7 +1,7 @@
 #!/bin/bash
 set -euo pipefail
 
-CHECKPOINT_PATH=/home/team11/.cache/huggingface/hub/models--ehalicki--eth-rl-so101-may17-policies/snapshots/80dd4a5d09322b58a891c6221aebb270a6200fc4/checkpoints/025000/pretrained_model
+CHECKPOINT_PATH=/home/team11/.cache/huggingface/hub/models--ehalicki--eth-rl-so101-may19-policies/snapshots/3d7ea8252a3698b6642e3bc462f0f1242cdeeec1/checkpoints/025000/pretrained_model
 SERVER_ADDRESS=127.0.0.1:50001
 
 PROJECT_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
