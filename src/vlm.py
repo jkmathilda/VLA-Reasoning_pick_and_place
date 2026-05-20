@@ -97,8 +97,8 @@ _REASONING_PROMPT = (
     "step by step: identify each bowl's color using the camera-geometry "
     "rule, restate the instruction, list candidate bowls, rule out the "
     "wrong ones, and conclude with the target POSITION (left, middle, "
-    "or right) — NOT a color. End with a single line:\n"
-    "  Conclusion: <left|middle|right>.\n"
+    "or right) — NOT a color. End with a single line in the form of:\n"
+    "  Conclusion: left (or middle or right)\n"
     "The last word must be a position word, not a color."
 )
 
