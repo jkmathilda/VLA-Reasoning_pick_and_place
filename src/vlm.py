@@ -15,9 +15,9 @@ import torch
 from PIL import Image
 from transformers import AutoModelForImageTextToText, AutoProcessor
 
-VLM_MODEL_ID = os.getenv("VLM_MODEL_ID", "HuggingFaceTB/SmolVLM2-2.2B-Instruct")
+VLM_MODEL_ID = os.getenv("VLM_MODEL_ID", "LiquidAI/LFM2.5-VL-450M")
 # Sampling temperature for the free-form reasoning phase. 0.0 = greedy decoding.
-VLM_REASONING_TEMP = float(os.getenv("VLM_REASONING_TEMP", "0.3"))
+VLM_REASONING_TEMP = float(os.getenv("VLM_REASONING_TEMP", "0.1"))
 
 _REASONING_PROMPT = (
     "Look carefully at the image of the robot workspace. The scene contains:\n"
@@ -153,7 +153,7 @@ class SceneVLM:
         self.processor = AutoProcessor.from_pretrained(model_id)
         self.model = AutoModelForImageTextToText.from_pretrained(
             model_id,
-            torch_dtype=torch.float16 if self.device != "cpu" else torch.float32,
+            torch_dtype=torch.bfloat16 if self.device != "cpu" else torch.float32,
         ).to(self.device)
         self.model.eval()
         print("[VLM] Ready.", file=sys.stderr)
@@ -172,7 +172,7 @@ class SceneVLM:
             return_dict=True,
             return_tensors="pt",
         )
-        target_dtype = torch.float16 if self.device != "cpu" else torch.float32
+        target_dtype = torch.bfloat16 if self.device != "cpu" else torch.float32
         inputs = {
             k: (v.to(self.device, dtype=target_dtype) if v.dtype.is_floating_point else v.to(self.device))
             for k, v in inputs.items()
@@ -185,10 +185,10 @@ class SceneVLM:
             "max_new_tokens": max_new_tokens,
             # Discourage degenerate "the bowl is blue. the bowl is blue. …" loops.
             # 1.0 = no penalty; >1 penalizes already-seen tokens.
-            "repetition_penalty": 1.15,
+            "repetition_penalty": 1.05,
         }
         if temperature > 0.0:
-            gen_kwargs.update(do_sample=True, temperature=temperature, top_p=0.95)
+            gen_kwargs.update(do_sample=True, temperature=temperature, min_p=0.15)
         else:
             gen_kwargs.update(do_sample=False)
         outputs = self.model.generate(**inputs, **gen_kwargs)
