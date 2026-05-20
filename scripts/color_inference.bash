@@ -45,13 +45,21 @@ if [[ -z "$TASK" ]]; then
     exit 1
 fi
 
-# Case-insensitive substitution: blue→left, red→middle, green→right.
-# Word boundaries (\b) avoid mangling things like "redo" or "bluebird".
-RESOLVED_TASK=$(echo "$TASK" | sed -E '
-    s/\b[Bb]lue\b/left/g
-    s/\b[Rr]ed\b/middle/g
-    s/\b[Gg]reen\b/right/g
-')
+# Detect color in the original task and fully replace with the canonical
+# "Place the banana into the <position> bowl." sentence the policy was
+# trained on. Fixed bowl order: blue=left, red=middle, green=right.
+LOWER_TASK=$(echo "$TASK" | tr '[:upper:]' '[:lower:]')
+if [[ "$LOWER_TASK" =~ blue ]]; then
+    POSITION=left
+elif [[ "$LOWER_TASK" =~ red ]]; then
+    POSITION=middle
+elif [[ "$LOWER_TASK" =~ green ]]; then
+    POSITION=right
+else
+    echo "Error: could not find a color (blue/red/green) in task: $TASK" >&2
+    exit 1
+fi
+RESOLVED_TASK="Place the banana into the ${POSITION} bowl."
 
 echo ">>> Task spec:     $TASK"
 echo ">>> Resolved task: $RESOLVED_TASK"
