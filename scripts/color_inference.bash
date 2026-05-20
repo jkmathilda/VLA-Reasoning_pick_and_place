@@ -49,11 +49,13 @@ fi
 # "Place the banana into the <position> bowl." sentence the policy was
 # trained on. Fixed bowl order: blue=left, red=middle, green=right.
 LOWER_TASK=$(echo "$TASK" | tr '[:upper:]' '[:lower:]')
-if [[ "$LOWER_TASK" =~ blue ]]; then
+# Match colors as whole words only so "coloured" / "colored" doesn't trip
+# the 'red' check.
+if [[ "$LOWER_TASK" =~ (^|[^a-z])blue([^a-z]|$) ]]; then
     POSITION=left
-elif [[ "$LOWER_TASK" =~ red ]]; then
+elif [[ "$LOWER_TASK" =~ (^|[^a-z])red([^a-z]|$) ]]; then
     POSITION=middle
-elif [[ "$LOWER_TASK" =~ green ]]; then
+elif [[ "$LOWER_TASK" =~ (^|[^a-z])green([^a-z]|$) ]]; then
     POSITION=right
 else
     echo "Error: could not find a color (blue/red/green) in task: $TASK" >&2
