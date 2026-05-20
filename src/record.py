@@ -31,7 +31,7 @@ from lerobot.utils.visualization_utils import init_rerun
 ROBOT_PORT = "/dev/tty.usbmodem5B141136531"
 LEADER_PORT = "/dev/tty.usbmodem5B141125311"
 
-REPO_ID = "ehalicki/eth-rl-so101-combined"
+REPO_ID = "ehalicki/eth-rl-so101-celebrities"
 LOCAL_ROOT = Path("~/.cache/huggingface/lerobot").expanduser()
 FPS = 30
 EPISODE_TIME_S = 180
