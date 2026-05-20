@@ -18,7 +18,7 @@ import torch
 from PIL import Image
 from transformers import AutoModelForImageTextToText, AutoProcessor
 
-VLM_MODEL_ID = os.getenv("VLM_MODEL_ID", "LiquidAI/LFM2.5-VL-450M")
+VLM_MODEL_ID = os.getenv("VLM_MODEL_ID", "HuggingFaceTB/SmolVLM2-2.2B-Instruct")
 VLM_REASONING_TEMP = float(os.getenv("VLM_REASONING_TEMP", "0.1"))
 
 _REASONING_PROMPT = (
