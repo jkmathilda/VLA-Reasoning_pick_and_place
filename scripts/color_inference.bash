@@ -56,23 +56,13 @@ fi
 # Detect color in the original task and fully replace with the canonical
 # "Place the banana into the <position> bowl." sentence the policy was
 # trained on. Fixed bowl order: blue=left, red=middle, green=right.
-LOWER_TASK=$(echo "$TASK" | tr '[:upper:]' '[:lower:]')
-# Match colors as whole words only so "coloured" / "colored" doesn't trip
-# the 'red' check.
-if [[ "$LOWER_TASK" =~ (^|[^a-z])blue([^a-z]|$) ]]; then
-    POSITION=left
-elif [[ "$LOWER_TASK" =~ (^|[^a-z])red([^a-z]|$) ]]; then
-    POSITION=middle
-elif [[ "$LOWER_TASK" =~ (^|[^a-z])green([^a-z]|$) ]]; then
-    POSITION=right
-else
-    echo "Error: could not find a color (blue/red/green) in task: $TASK" >&2
+# Fuzzy matching (bigram IoU + difflib ratio) handles typos / odd casing.
+if ! POSITION=$(python "$PROJECT_ROOT/scripts/parse_eval1_color.py" "$TASK"); then
     exit 1
 fi
 RESOLVED_TASK="Place the banana into the ${POSITION} bowl."
 
-echo ">>> Task spec:     $TASK"
-echo ">>> Resolved task: $RESOLVED_TASK"
+echo ">>> Task spec: $TASK"
 echo ">>> Launching robot client with SKIP_VLM=1 (homing only, no VLM)..."
 
 SKIP_VLM=1 python "$PROJECT_ROOT/scripts/robot_client_with_vlm.py" \
