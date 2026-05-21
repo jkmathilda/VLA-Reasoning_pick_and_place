@@ -1,0 +1,22 @@
+# Each task uses its own server checkpoint. Run the matching server first,
+# then paste the printed path into the client's --checkpoint.
+
+# ---- Task 1 — color (no VLM) ----
+bash scripts/async_server.bash --repo ehalicki/eth-rl-so101-may19-policies --checkpoint 025000
+bash scripts/color_inference.bash --task "Place the banana in the blue bowl" --checkpoint <path>
+
+# ---- Task 2 — compositional, no VLM ----
+bash scripts/async_server.bash --repo ehalicki/smolvla_finetune_so101_may20_eval2_compositional --checkpoint 015000
+bash scripts/inference_eval2_compositional.bash --task "Put the banana in the bowl that is not green and not blue" --checkpoint <path>
+
+# ---- Task 2 — with VLM ----
+bash scripts/async_server.bash --repo ehalicki/eth-rl-so101-may19-policies --checkpoint 025000
+bash scripts/vlm_inference.bash --task "Put the banana into the 2nd bowl from the left" --checkpoint <path>
+
+# ---- Task 3 — random, no VLM ----
+bash scripts/async_server.bash --repo ehalicki/smolvla_finetune_so101_may20_eval3 --checkpoint 012000
+bash scripts/inference_eval3_random.bash --checkpoint <path>
+
+# ---- Task 3 — with VLM ----
+bash scripts/async_server.bash --repo ehalicki/smolvla_finetune_so101_may20_eval3 --checkpoint 012000
+bash scripts/vlm_inference.bash --task "Place the coke can on the picture of <celebrity>" --checkpoint <path>

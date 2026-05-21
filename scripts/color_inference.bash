@@ -15,8 +15,8 @@
 
 set -euo pipefail
 
-CHECKPOINT_PATH=/home/team11/.cache/huggingface/hub/models--ehalicki--eth-rl-so101-may19-policies/snapshots/3d7ea8252a3698b6642e3bc462f0f1242cdeeec1/checkpoints/025000/pretrained_model
-SERVER_ADDRESS=127.0.0.1:50001
+CHECKPOINT_PATH="${CHECKPOINT_PATH:-/home/team11/.cache/huggingface/hub/models--ehalicki--eth-rl-so101-may19-policies/snapshots/3d7ea8252a3698b6642e3bc462f0f1242cdeeec1/checkpoints/025000/pretrained_model}"
+SERVER_ADDRESS="${SERVER_ADDRESS:-127.0.0.1:50001}"
 
 PROJECT_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 
@@ -31,9 +31,17 @@ while [[ $# -gt 0 ]]; do
             TASK="${1#*=}"
             shift
             ;;
+        --checkpoint)
+            CHECKPOINT_PATH="$2"
+            shift 2
+            ;;
+        --checkpoint=*)
+            CHECKPOINT_PATH="${1#*=}"
+            shift
+            ;;
         *)
             echo "Unknown argument: $1" >&2
-            echo "Usage: $0 --task \"<task description>\"" >&2
+            echo "Usage: $0 --task \"<task>\" [--checkpoint <path>]" >&2
             exit 1
             ;;
     esac

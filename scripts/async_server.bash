@@ -1,7 +1,35 @@
 #!/bin/bash
+set -euo pipefail
 
-REPO_ID=ehalicki/eth-rl-so101-may19-policies
-CHECKPOINT_STEP=025000
+REPO_ID="${REPO_ID:-ehalicki/eth-rl-so101-may19-policies}"
+CHECKPOINT_STEP="${CHECKPOINT_STEP:-025000}"
+
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --repo)
+            REPO_ID="$2"
+            shift 2
+            ;;
+        --repo=*)
+            REPO_ID="${1#*=}"
+            shift
+            ;;
+        --checkpoint)
+            CHECKPOINT_STEP="$2"
+            shift 2
+            ;;
+        --checkpoint=*)
+            CHECKPOINT_STEP="${1#*=}"
+            shift
+            ;;
+        *)
+            echo "Unknown argument: $1" >&2
+            echo "Usage: $0 [--repo <hf_repo_id>] [--checkpoint <step>]" >&2
+            exit 1
+            ;;
+    esac
+done
+
 CHECKPOINT_SUBPATH=checkpoints/$CHECKPOINT_STEP/pretrained_model
 
 echo "Ensuring $REPO_ID checkpoint $CHECKPOINT_STEP is in the HF cache..."
