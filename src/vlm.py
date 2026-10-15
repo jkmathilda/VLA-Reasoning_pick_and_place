@@ -18,11 +18,11 @@ VLM_MODEL_ID = os.getenv("VLM_MODEL_ID", "HuggingFaceTB/SmolVLM-256M-Instruct")
 _PROMPT_TEMPLATE = (
     "Look at this robot workspace. "
     "There are three bowls: one on the left, one in the middle, and one on the right. "
+    "The three bowls are red, green, and blue, irrespective of their position. "
     "The user's instruction is: \"{task_spec}\". "
-    "Based on this instruction and the scene, which bowl should the banana be placed in? Reason yourself."
-    # "Reply with exactly one word: left, middle, or right."
-    # "What is the color of the bowl on the left?"
-    "Reply with left, middle, or right with your reasoning."
+    "Based on this instruction and the scene, which bowl should the banana be placed in?"
+    "Reply with exactly one word: left, middle, or right."
+    "What is the color of the bowl on the left?"
 )
 
 class SceneVLM:
